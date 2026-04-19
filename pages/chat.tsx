@@ -40,9 +40,17 @@ const ChatPage: React.FC = () => {
     setInitFailed(false)
     try {
       const res = await fetch('/api/session', { method: 'POST' })
-      const data = await res.json()
+      const data = await res.json() as { session_id?: string; opening_message?: string; error?: string; code?: string }
 
-      if (data.error) throw new Error(data.error)
+      if (!res.ok || data.error) {
+        const error = new Error(data.error || 'Failed to start session') as Error & { code?: string }
+        error.code = data.code
+        throw error
+      }
+
+      if (!data.session_id || !data.opening_message) {
+        throw new Error('Invalid session response')
+      }
 
       setSessionId(data.session_id)
       setMessages([
@@ -54,13 +62,18 @@ const ChatPage: React.FC = () => {
       ])
       setSessionLoading(false)
       return data.session_id as string
-    } catch {
+    } catch (err) {
+      const error = err as Error & { code?: string }
+      const message = error.code === 'RATE_LIMIT_EXCEEDED'
+        ? 'You have opened chat too many times in a short period. Please wait a bit and try again.'
+        : "I'm having trouble connecting. Check your internet or ensure your Vercel Environment Variables (Supabase/Groq) are set."
+
       setInitFailed(true)
       setMessages([
         {
           id: safeId(),
           role: 'assistant',
-          content: "I'm having trouble connecting. Check your internet or ensure your Vercel Environment Variables (Supabase/Groq) are set.",
+          content: message,
         },
       ])
       setSessionLoading(false)

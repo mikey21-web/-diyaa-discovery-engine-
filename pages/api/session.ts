@@ -22,7 +22,7 @@ export default async function handler(
   }
 
   const ip = getIP(req)
-  const { allowed } = await rateLimit(ip, { limit: 10, windowMs: 60 * 60 * 1000 })
+  const { allowed } = await rateLimit(ip, { limit: 60, windowMs: 60 * 60 * 1000 })
   if (!allowed) {
     return res.status(429).json({ error: 'Too many sessions. Please try again later.', code: 'RATE_LIMIT_EXCEEDED' })
   }
