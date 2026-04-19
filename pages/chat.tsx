@@ -34,7 +34,7 @@ const ChatPage: React.FC = () => {
   const safeId = () => Math.random().toString(36).substring(2, 15)
 
   const initSession = useCallback(async (): Promise<string | null> => {
-    if (sessionLoading) return null
+    if (sessionLoading || sessionId) return sessionId
 
     setSessionLoading(true)
     setInitFailed(false)
@@ -83,8 +83,10 @@ const ChatPage: React.FC = () => {
 
   // Create session on mount
   useEffect(() => {
-    initSession()
-  }, [initSession])
+    if (!sessionId) {
+      initSession()
+    }
+  }, [])
 
   // Auto-scroll
   useEffect(() => {
@@ -309,13 +311,13 @@ const ChatPage: React.FC = () => {
                   }
                 }}
                 placeholder="Type your answer..."
-                disabled={isLoading || sessionLoading}
+                disabled={isLoading}
                 className="w-full bg-transparent outline-none resize-none text-[15px] text-charcoal
                            placeholder:text-warm-muted disabled:opacity-50 leading-relaxed max-h-[200px] overflow-y-auto py-1"
               />
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || isLoading || sessionLoading}
+                disabled={!input.trim() || isLoading}
                 className="p-2 text-amber disabled:text-warm-border transition-colors shrink-0"
               >
                 <Send className="w-4 h-4" />
