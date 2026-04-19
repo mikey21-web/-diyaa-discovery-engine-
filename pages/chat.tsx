@@ -32,16 +32,20 @@ const ChatPage: React.FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // Create session on mount
-  useEffect(() => {
+    const safeId = () => Math.random().toString(36).substring(2, 15);
+    
     const initSession = async () => {
       setInitFailed(false)
       try {
         const res = await fetch('/api/session', { method: 'POST' })
         const data = await res.json()
+        
+        if (data.error) throw new Error(data.error);
+
         setSessionId(data.session_id)
         setMessages([
           {
-            id: crypto.randomUUID(),
+            id: safeId(),
             role: 'assistant',
             content: data.opening_message,
           },
@@ -50,9 +54,9 @@ const ChatPage: React.FC = () => {
         setInitFailed(true)
         setMessages([
           {
-            id: crypto.randomUUID(),
+            id: safeId(),
             role: 'assistant',
-            content: "I&apos;m having trouble connecting right now. Tap retry to try again.",
+            content: "I'm having trouble connecting. Check your internet or ensure your Vercel Environment Variables (Supabase/Groq) are set.",
           },
         ])
       }
@@ -78,11 +82,13 @@ const ChatPage: React.FC = () => {
     if (!input.trim() || isLoading || !sessionId) return
 
     const userMessage = input.trim()
+    const safeId = () => Math.random().toString(36).substring(2, 15);
+    
     setInput('')
     if (inputRef.current) {
       inputRef.current.style.height = 'auto'
     }
-    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: userMessage }])
+    setMessages(prev => [...prev, { id: safeId(), role: 'user', content: userMessage }])
     setIsLoading(true)
 
     try {
@@ -97,10 +103,10 @@ const ChatPage: React.FC = () => {
       if (data.error) {
         setMessages(prev => [
           ...prev,
-          { id: crypto.randomUUID(), role: 'assistant', content: 'Something went wrong. Could you try rephrasing that?' },
+          { id: safeId(), role: 'assistant', content: `Error: ${data.error}. Please try again.` },
         ])
       } else {
-        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: data.reply }])
+        setMessages(prev => [...prev, { id: safeId(), role: 'assistant', content: data.reply }])
         setPhase(data.phase)
 
         if (data.report_ready) {
@@ -113,7 +119,7 @@ const ChatPage: React.FC = () => {
     } catch (err) {
       setMessages(prev => [
         ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', content: 'Connection issue. Please try again.' },
+        { id: safeId(), role: 'assistant', content: 'Connection issue. Please check your Groq API key in Vercel.' },
       ])
     }
 
