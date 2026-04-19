@@ -1,42 +1,58 @@
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 import { logger } from './logger'
 
-export async function sendLeadEmail(leadData: any) {
-  const { RESEND_API_KEY, ADMIN_EMAIL } = process.env
-  
-  if (!RESEND_API_KEY || !ADMIN_EMAIL) {
-    logger.warn('Resend credentials missing, skipping email.')
-    return
+/**
+ * Configure Nodemailer for Gmail
+ * Note: Requires Gmail App Password (not standard account password)
+ */
+const createTransporter = () => {
+  const { GMAIL_USER, GMAIL_APP_PASSWORD } = process.env
+
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    logger.warn('Gmail credentials missing (GMAIL_USER/GMAIL_APP_PASSWORD), skipping email.')
+    return null
   }
 
-  const resend = new Resend(RESEND_API_KEY)
-  const fromEmail = 'onboarding@resend.dev' // Default verified sender for fresh Resend accounts
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: GMAIL_USER,
+      pass: GMAIL_APP_PASSWORD,
+    },
+  })
+}
+
+export async function sendLeadEmail(leadData: any) {
+  const transporter = createTransporter()
+  const { ADMIN_EMAIL } = process.env
+
+  if (!transporter || !ADMIN_EMAIL) return
 
   try {
     // 1. Alert for you (Admin)
-    await resend.emails.send({
-      from: `diyaa.ai Engine <${fromEmail}>`,
-      to: [ADMIN_EMAIL],
+    await transporter.sendMail({
+      from: `"diyaa.ai Engine" <${process.env.GMAIL_USER}>`,
+      to: ADMIN_EMAIL,
       subject: `🚨 New AI Lead: ${leadData.name}`,
       html: `
         <h2>New Discovery Session Completed!</h2>
         <p><strong>Name:</strong> ${leadData.name}</p>
-        <p><strong>WhatsApp:</strong> ${leadData.whatsapp || 'Not provided'}</p>
-        <p><strong>Email:</strong> ${leadData.email || 'Not provided'}</p>
+        <p><strong>Email:</strong> ${leadData.email}</p>
         <p><strong>Industry:</strong> ${leadData.industry || 'Unknown'}</p>
         <p><strong>AI Readiness Score:</strong> ${leadData.ai_readiness_score || 'N/A'} / 10</p>
         <br />
         <p><strong>View Full Report:</strong> <a href="${leadData.report_url}">${leadData.report_url}</a></p>
       `,
     })
-    logger.info('Admin email sent for new lead.')
+    logger.info('Admin email sent for new lead via Gmail.')
 
     // 2. Report sent directly to the Lead (if they provided email)
     if (leadData.email) {
-      await resend.emails.send({
-        from: `Diyaa from diyaa.ai <${fromEmail}>`,
-        to: [leadData.email],
+      await transporter.sendMail({
+        from: `"Diyaa from diyaa.ai" <${process.env.GMAIL_USER}>`,
+        to: leadData.email,
         subject: `Your AI Implementation Roadmap is Ready`,
+        replyTo: process.env.GMAIL_USER,
         html: `
           <h3>Hi ${leadData.name},</h3>
           <p>Thank you for completing the discovery session.</p>
@@ -47,33 +63,28 @@ export async function sendLeadEmail(leadData: any) {
           <p>Best regards,<br/>Diyaa<br/>diyaa.ai</p>
         `,
       })
-      logger.info('Report emailed directly to the lead.')
+      logger.info('Report emailed directly to the lead via Gmail.')
     }
   } catch (error) {
-    logger.error('Email dispatch failed', { error })
+    logger.error('Gmail email dispatch failed', { error })
   }
 }
 
-export async function sendErrorAlert(errorDetails: { 
-  error: string, 
-  status?: number, 
-  keyIndex: number, 
-  allKeysExhausted: boolean 
+export async function sendErrorAlert(errorDetails: {
+  error: string,
+  status?: number,
+  keyIndex: number,
+  allKeysExhausted: boolean
 }) {
-  const { RESEND_API_KEY, ADMIN_EMAIL } = process.env
-  
-  if (!RESEND_API_KEY || !ADMIN_EMAIL) {
-    logger.warn('Resend credentials missing, skipping error alert email.')
-    return
-  }
+  const transporter = createTransporter()
+  const { ADMIN_EMAIL } = process.env
 
-  const resend = new Resend(RESEND_API_KEY)
-  const fromEmail = 'onboarding@resend.dev'
+  if (!transporter || !ADMIN_EMAIL) return
 
   try {
-    await resend.emails.send({
-      from: `diyaa.ai Monitor <${fromEmail}>`,
-      to: [ADMIN_EMAIL],
+    await transporter.sendMail({
+      from: `"diyaa.ai Monitor" <${process.env.GMAIL_USER}>`,
+      to: ADMIN_EMAIL,
       subject: `🚨 CRITICAL: Groq API Error - ${errorDetails.allKeysExhausted ? 'ALL KEYS EXHAUSTED' : 'Key Failed'}`,
       html: `
         <h2>Groq API Issue Detected</h2>
@@ -85,8 +96,9 @@ export async function sendErrorAlert(errorDetails: {
         <p>Managed via diyaa.ai Monitoring</p>
       `,
     })
-    logger.info('Error alert email sent.')
+    logger.info('Error alert email sent via Gmail.')
   } catch (error) {
-    logger.error('Failed to send error alert email', { error })
+    logger.error('Failed to send error alert email via Gmail', { error })
   }
 }
+

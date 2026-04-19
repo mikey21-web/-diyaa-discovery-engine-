@@ -14,8 +14,15 @@ export type VerticalKey =
   | 'manufacturing'
   | 'marketing_agency'
   | 'professional_services'
-  | 'retail'
-  | 'tech_startup'
+  | 'recruitment'
+  | 'ca_firm'
+  | 'legal'
+  | 'auto'
+  | 'salon'
+  | 'travel'
+  | 'interior'
+  | 'wealth_management'
+  | 'hr_tech'
   | 'other'
 
 export type RevenueRange =
@@ -110,14 +117,16 @@ export interface ExtractedData {
   realization_moment?: string
   confidence_score?: number
   confidence_note?: string
-  priority_1_implementation?: PriorityImplementation
-  layer_1_agents?: InfraItem[]
-  layer_2_automations?: InfraItem[]
-  layer_3_infra?: {
-    command_center?: string
-    key_integrations?: string[]
-    data_flows?: string
-  }
+  revenue_leak_breakdown?: Array<{ label: string, value: string }>
+  roadmap?: Array<{
+    stage: string
+    title: string
+    agent: string
+    what_it_does: string
+    build_time: string
+    monthly_value_inr: number
+    confidence_score: number
+  }>
   before_after?: {
     today?: string
     in_90_days?: string
@@ -169,7 +178,7 @@ export interface ReportResponse {
 export interface LeadRequest {
   session_id: string
   name: string
-  email?: string
+  email: string
   whatsapp?: string
 }
 

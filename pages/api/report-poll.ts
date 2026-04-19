@@ -18,7 +18,7 @@ export default async function handler(
     const supabase = getServiceClient()
     const { data: session } = await supabase
       .from('sessions')
-      .select('extracted_data, ai_readiness_score, updated_at, created_at')
+      .select('extracted_data, ai_readiness_score, updated_at, created_at, leads!inner(name)')
       .eq('id', session_id)
       .single()
 
@@ -35,6 +35,9 @@ export default async function handler(
     return res.status(200).json({
       ready: true,
       report: {
+        founderName: Array.isArray((session as any).leads) 
+          ? (session as any).leads[0]?.name 
+          : ((session as any).leads?.name || ''),
         businessName: extracted.business_name || extracted.business || 'Your Business',
         industry: extracted.industry || 'other',
         city: extracted.city || '',

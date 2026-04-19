@@ -12,7 +12,6 @@ interface Message {
 
 interface LeadFormData {
   name: string
-  whatsapp: string
   email: string
 }
 
@@ -26,7 +25,7 @@ const ChatPage: React.FC = () => {
   const [reportReady, setReportReady] = useState(false)
   const [reportId, setReportId] = useState<string | null>(null)
   const [showLeadForm, setShowLeadForm] = useState(false)
-  const [leadForm, setLeadForm] = useState<LeadFormData>({ name: '', whatsapp: '+91', email: '' })
+  const [leadForm, setLeadForm] = useState<LeadFormData>({ name: '', email: '' })
   const [leadSubmitting, setLeadSubmitting] = useState(false)
   const [leadSubmitted, setLeadSubmitted] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -122,11 +121,9 @@ const ChatPage: React.FC = () => {
   }
 
   const handleLeadSubmit = async () => {
-    const cleanWhatsapp = leadForm.whatsapp.replace(/\D/g, '')
-    const hasWhatsapp = cleanWhatsapp.length >= 10
     const hasEmail = !!leadForm.email?.trim()
 
-    if (!leadForm.name || (!hasWhatsapp && !hasEmail) || !sessionId) return
+    if (!leadForm.name || !hasEmail || !sessionId) return
     setLeadSubmitting(true)
 
     try {
@@ -136,8 +133,7 @@ const ChatPage: React.FC = () => {
         body: JSON.stringify({
           session_id: sessionId,
           name: leadForm.name,
-          whatsapp: leadForm.whatsapp,
-          email: leadForm.email || undefined,
+          email: leadForm.email,
         }),
       })
       setLeadSubmitted(true)
@@ -340,21 +336,7 @@ const ChatPage: React.FC = () => {
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-charcoal-mid uppercase tracking-wide mb-1 block">
-                    WhatsApp Number <span className="text-warm-muted font-normal">(optional)</span>
-                  </label>
-                  <input
-                    type="tel"
-                    value={leadForm.whatsapp}
-                    onChange={(e) => setLeadForm(prev => ({ ...prev, whatsapp: e.target.value }))}
-                    placeholder="+91 98765 43210"
-                    className="w-full px-4 py-3 bg-warm-bg border border-warm-border rounded-xl text-sm
-                              text-charcoal placeholder:text-warm-muted outline-none
-                              focus:border-amber/50 focus:ring-2 focus:ring-amber-bg transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-charcoal-mid uppercase tracking-wide mb-1 block">
-                    Email <span className="text-warm-muted font-normal">(optional)</span>
+                    Email *
                   </label>
                   <input
                     type="email"
@@ -370,7 +352,7 @@ const ChatPage: React.FC = () => {
 
               <button
                 onClick={handleLeadSubmit}
-                disabled={!leadForm.name || (!leadForm.whatsapp && !leadForm.email) || leadSubmitting}
+                disabled={!leadForm.name || !leadForm.email || leadSubmitting}
                 className="w-full mt-5 px-6 py-4 bg-amber text-charcoal font-bold rounded-xl
                            hover:bg-amber-hover transition-all active:scale-[0.98]
                            disabled:opacity-50 disabled:cursor-not-allowed

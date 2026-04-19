@@ -10,6 +10,8 @@ import { getClaudeResponse } from '@/lib/claude'
 import { logger } from '@/lib/logger'
 import type { ChatRequest, ChatResponse, ApiError, ConversationMessage } from '@/lib/types'
 
+import { rateLimit } from '@/lib/rateLimit'
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ChatResponse | ApiError>
@@ -18,16 +20,21 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' })
   }
 
+  const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+  const { allowed } = rateLimit(ip, { limit: 10, windowMs: 60000 });
+  if (!allowed) {
+    return res.status(429).json({ error: 'Too many messages. Please wait 1 minute.', code: 'RATE_LIMIT_EXCEEDED' });
+  }
+
   const { session_id, message } = req.body as ChatRequest
 
-  if (!session_id || !message) {
-    return res.status(400).json({ error: 'Missing session_id or message', code: 'BAD_REQUEST' })
+  if (!session_id || typeof session_id !== 'string' || !message || message.length > 2000) {
+    return res.status(400).json({ error: 'Invalid message or session_id', code: 'BAD_REQUEST' })
   }
 
   try {
     const supabase = getServiceClient()
 
-    // 1. Fetch existing session — only columns we need
     const { data: session, error: fetchError } = await supabase
       .from('sessions')
       .select('conversation_history, phase, status')
@@ -35,26 +42,20 @@ export default async function handler(
       .single()
 
     if (fetchError || !session) {
-      logger.error('Session not found', { sessionId: session_id })
       return res.status(404).json({ error: 'Session not found', code: 'NOT_FOUND' })
     }
 
     if (session.status !== 'active') {
-      return res.status(400).json({ error: 'Session is no longer active', code: 'SESSION_CLOSED' })
+      return res.status(410).json({ error: 'Session expired/complete', code: 'SESSION_CLOSED' })
     }
 
-    // 2. Build conversation history for Claude
     const history: ConversationMessage[] = session.conversation_history || []
-
-    // Add the user's new message
-    const userMsg: ConversationMessage = {
+    history.push({
       role: 'user',
       content: message,
       timestamp: new Date().toISOString(),
-    }
-    history.push(userMsg)
+    })
 
-    // 3. Call Claude with full history
     const claudeMessages = history.map(msg => ({
       role: msg.role as 'user' | 'assistant',
       content: msg.content,
@@ -62,78 +63,46 @@ export default async function handler(
 
     const claudeResponse = await getClaudeResponse(claudeMessages, session.phase)
 
-    // 4. Add assistant response to history
-    const assistantMsg: ConversationMessage = {
+    history.push({
       role: 'assistant',
       content: claudeResponse.content,
       timestamp: new Date().toISOString(),
-    }
-    history.push(assistantMsg)
-
-    // 5. Prepare update payload
-    const updatePayload: Record<string, unknown> = {
-      conversation_history: history,
-      phase: claudeResponse.phase,
-      updated_at: new Date().toISOString(),
-    }
+    })
 
     let reportId: string | undefined
 
-    // 6. If report ready, atomically lock session + write data in one operation
-    if (claudeResponse.reportReady && claudeResponse.extractedData) {
-      const { error: lockError } = await supabase
-        .from('sessions')
-        .update({
-          status: 'complete',
-          extracted_data: claudeResponse.extractedData,
-          ai_readiness_score:
-            (claudeResponse.extractedData as Record<string, unknown>).ai_readiness_score || 0,
-        })
-        .eq('id', session_id)
-        .eq('status', 'active') // Optimistic lock — prevents duplicate processing
+    // ATOMIC PREPARATION
+    const isReportReady = claudeResponse.reportReady && claudeResponse.extractedData;
+    const finalStatus = isReportReady ? 'report_generated' : 'active';
 
-      if (lockError) {
-        logger.warn('Session lock/data write failed — may have been processed already', {
-          sessionId: session_id,
-        })
-      }
-
-      updatePayload.status = 'report_generated'
-
-      // C2: Upsert to prevent duplicate report rows on retry
-      const { data: report, error: reportError } = await supabase
-        .from('reports')
-        .upsert(
-          {
-            session_id: session_id,
-            share_url: `${process.env.NEXT_PUBLIC_APP_URL}/report/${session_id}`,
-          },
-          { onConflict: 'session_id' }
-        )
-        .select('id')
-        .single()
-
-      if (!reportError && report) {
-        reportId = report.id
-        logger.info('Report created', { sessionId: session_id, reportId: report.id })
-      }
-    }
-
-    // 7. Update session in Supabase
     const { error: updateError } = await supabase
       .from('sessions')
-      .update(updatePayload)
+      .update({
+        conversation_history: history,
+        phase: claudeResponse.phase,
+        status: finalStatus,
+        extracted_data: isReportReady ? claudeResponse.extractedData : null,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', session_id)
+      .eq('status', 'active'); // ATOMIC LOCK
 
     if (updateError) {
-      logger.error('Failed to update session', { error: updateError.message })
+      throw new Error('Atomic update failed - likely race condition');
     }
 
-    logger.info('Chat turn completed', {
-      sessionId: session_id,
-      phase: claudeResponse.phase,
-      reportReady: claudeResponse.reportReady,
-    })
+    if (isReportReady) {
+      const { data: report } = await supabase
+        .from('reports')
+        .upsert({
+          session_id: session_id,
+          share_url: `${process.env.NEXT_PUBLIC_APP_URL}/report/${session_id}`,
+        }, { onConflict: 'session_id' })
+        .select('id')
+        .single();
+      
+      reportId = report?.id;
+    }
 
     return res.status(200).json({
       reply: claudeResponse.content,
@@ -143,7 +112,7 @@ export default async function handler(
     })
   } catch (err) {
     const error = err as Error
-    logger.error('Chat handler failed', { message: error.message })
-    return res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' })
+    logger.error('Chat error:', { msg: error.message });
+    return res.status(500).json({ error: 'Service Unavailable', code: 'INTERNAL_ERROR' })
   }
 }
