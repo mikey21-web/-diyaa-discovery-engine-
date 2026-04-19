@@ -23,6 +23,8 @@ export type VerticalKey =
   | 'interior'
   | 'wealth_management'
   | 'hr_tech'
+  | 'retail'
+  | 'tech_startup'
   | 'other'
 
 export type RevenueRange =

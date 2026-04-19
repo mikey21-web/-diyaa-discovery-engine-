@@ -39,11 +39,6 @@ export default function ReportPage() {
   const [state, setState] = useState<ReportState>('loading')
   const [reportData, setReportData] = useState<ReportData | null>(null)
 
-  useEffect(() => {
-    if (!session_id) return
-    loadReport()
-  }, [session_id, loadReport])
-
   const loadReport = useCallback(async (attempt = 0) => {
     try {
       const response = await fetch('/api/report-poll', {
@@ -58,18 +53,22 @@ export default function ReportPage() {
       if (data.ready && data.report) {
         setReportData(data.report)
         setState('ready')
+      } else if (attempt < 15) {
+        // Poll every 3 seconds for 45s max
+        setTimeout(() => loadReport(attempt + 1), 3000)
       } else {
-        setState('generating')
-        if (attempt < 10) {
-          setTimeout(() => loadReport(attempt + 1), 3000)
-        } else {
-          setState('error')
-        }
+        setState('error')
       }
-    } catch (e) {
+    } catch (err) {
+      console.error('Report error:', err)
       setState('error')
     }
   }, [session_id])
+
+  useEffect(() => {
+    if (!session_id) return
+    loadReport()
+  }, [session_id, loadReport])
 
   if (state === 'loading' || state === 'generating') {
     return (

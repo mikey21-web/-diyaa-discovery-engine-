@@ -185,7 +185,7 @@ Nothing before the JSON, nothing after.
   "session_id": "uuid-v4",
   "name": "founder name or null",
   "business": "business description",
-  "industry": "real_estate | hospitality | coaching | d2c_fashion | fnb | healthcare | logistics | education | manufacturing | marketing_agency | professional_services | recruitment | ca_firm | legal | auto | salon | travel | interior | wealth_management | hr_tech | other",
+  "industry": "real_estate | hospitality | coaching | d2c_fashion | fnb | healthcare | logistics | education | manufacturing | marketing_agency | professional_services | recruitment | ca_firm | legal | auto | salon | travel | interior | wealth_management | hr_tech | retail | tech_startup | other",
   "city": "city or null",
   "ai_readiness_score": 0,
   "top_pain_point": "one sentence with number, their words where possible",

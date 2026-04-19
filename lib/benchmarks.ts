@@ -35,7 +35,7 @@ export interface VerticalBenchmark {
   stat_source: string
 }
 
-export const BENCHMARKS: Record<VerticalKey | 'general', VerticalBenchmark> = {
+export const BENCHMARKS: Partial<Record<VerticalKey, VerticalBenchmark>> & { general: VerticalBenchmark } = {
   real_estate: {
     lead_response_time_top: '5 minutes',
     lead_response_time_average_india: '4.2 hours',
