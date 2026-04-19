@@ -64,9 +64,9 @@ const ChatPage: React.FC = () => {
       return data.session_id as string
     } catch (err) {
       const error = err as Error & { code?: string }
-      const message = error.code === 'RATE_LIMIT_EXCEEDED'
-        ? 'You have opened chat too many times in a short period. Please wait a bit and try again.'
-        : "I'm having trouble connecting. Check your internet or ensure your Vercel Environment Variables (Supabase/Groq) are set."
+      const message = error.message.includes('Invalid session')
+        ? 'Session failed. Please refresh and try again.'
+        : 'Something went wrong. Please refresh the page and try again.'
 
       setInitFailed(true)
       setMessages([
