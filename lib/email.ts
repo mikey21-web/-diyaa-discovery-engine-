@@ -4,6 +4,7 @@ import { logger } from './logger'
 interface LeadEmailData {
   name: string
   email?: string
+  whatsapp?: string | null
   industry?: string | null
   ai_readiness_score?: number | null
   report_url?: string | null
@@ -45,7 +46,8 @@ export async function sendLeadEmail(leadData: LeadEmailData) {
       html: `
         <h2>New Discovery Session Completed!</h2>
         <p><strong>Name:</strong> ${leadData.name}</p>
-        <p><strong>Email:</strong> ${leadData.email}</p>
+        <p><strong>Email:</strong> ${leadData.email || 'N/A'}</p>
+        <p><strong>WhatsApp:</strong> ${leadData.whatsapp || 'N/A'}</p>
         <p><strong>Industry:</strong> ${leadData.industry || 'Unknown'}</p>
         <p><strong>AI Readiness Score:</strong> ${leadData.ai_readiness_score || 'N/A'} / 10</p>
         <br />

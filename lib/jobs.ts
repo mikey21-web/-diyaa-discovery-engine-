@@ -18,6 +18,7 @@ type LeadWebhookPayload = {
 type LeadEmailPayload = {
   name: string
   email: string | null
+  whatsapp: string | null
   industry: string | null
   report_url: string | null
   ai_readiness_score: number | null
@@ -74,10 +75,10 @@ async function runLeadWebhook(payload: LeadWebhookPayload): Promise<void> {
 }
 
 async function runLeadEmail(payload: LeadEmailPayload): Promise<void> {
-  if (!payload.email) return
   await sendLeadEmail({
     name: payload.name,
-    email: payload.email,
+    email: payload.email || undefined,
+    whatsapp: payload.whatsapp,
     industry: payload.industry,
     report_url: payload.report_url,
     ai_readiness_score: payload.ai_readiness_score,

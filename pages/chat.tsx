@@ -140,6 +140,26 @@ const ChatPage: React.FC = () => {
 
       const data = await res.json()
 
+      if (data.report_ready) {
+        setReportReady(true)
+        setPhase(6)
+        // Ensure there's always a concluding message if AI just sends JSON
+        const reply = data.reply || "Got it. I'm analyzing your data and building your implementation roadmap right now..."
+        setMessages(prev => [
+          ...prev,
+          {
+            id: safeId(),
+            role: 'assistant',
+            content: reply,
+          },
+        ])
+        setIsLoading(false)
+        
+        // Auto-show lead form after a short delay
+        setTimeout(() => setShowLeadForm(true), 1500)
+        return
+      }
+
       if (data.error) {
         setMessages(prev => [
           ...prev,

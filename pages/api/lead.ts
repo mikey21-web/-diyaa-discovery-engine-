@@ -95,6 +95,7 @@ export default async function handler(
     await enqueueJob('lead_email', {
       name,
       email: email || null,
+      whatsapp: normalizedWhatsapp,
       industry: extractedData?.industry || null,
       report_url: reportUrl,
       ai_readiness_score: extractedData?.ai_readiness_score ?? null,
