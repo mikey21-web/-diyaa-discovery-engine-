@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+:root {
+  /* Core palette — charcoal / off-white / amber */
+  --color-bg: #FAFAF8;
+  --color-bg-warm: #F5F2EB;
+  --color-surface: #FFFFFF;
+  --color-charcoal: #0F0F0F;
+  --color-charcoal-soft: #1A1A1A;
+  --color-text: #3D3D3D;
+  --color-text-muted: #8A8578;
+  --color-border: #E5E2DB;
+  --color-accent: #D4A843;
+  --color-accent-hover: #E5B954;
+  --color-accent-bg: rgba(212, 168, 67, 0.08);
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
+::selection {
+  background: var(--color-accent-bg);
+  color: var(--color-charcoal);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Focus ring */
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

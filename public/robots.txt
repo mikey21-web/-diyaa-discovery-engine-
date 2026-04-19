@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Sitemap: https://diyaaaa.in/sitemap.xml
+
+User-agent: Googlebot
+Allow: /
+
+Disallow: /api/
