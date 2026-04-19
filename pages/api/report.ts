@@ -8,6 +8,7 @@ import { getServiceClient } from '@/lib/supabase'
 import { logger } from '@/lib/logger'
 import { getBenchmarksForVertical } from '@/lib/benchmarks'
 import { getScoreInterpretation } from '@/lib/scoring'
+import { getBaseUrl } from '@/lib/utils'
 import type { ApiError, ExtractedData, VerticalKey } from '@/lib/types'
 
 interface ReportData {
@@ -79,7 +80,7 @@ export default async function handler(
 
     return res.status(200).json({
       report_id: report?.id || sessionId,
-      report_url: `${process.env.NEXT_PUBLIC_APP_URL}/report/${sessionId}`,
+      report_url: `${getBaseUrl()}/report/${sessionId}`,
       business_name: extractedData.business_name || extractedData.business || 'Your Business',
       industry: extractedData.industry || 'other',
       extracted_data: extractedData,

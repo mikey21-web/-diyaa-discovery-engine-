@@ -11,6 +11,7 @@ import { logger } from '@/lib/logger'
 import type { ChatRequest, ChatResponse, ApiError, ConversationMessage } from '@/lib/types'
 
 import { rateLimit } from '@/lib/rateLimit'
+import { getBaseUrl } from '@/lib/utils'
 
 export default async function handler(
   req: NextApiRequest,
@@ -96,7 +97,7 @@ export default async function handler(
         .from('reports')
         .upsert({
           session_id: session_id,
-          share_url: `${process.env.NEXT_PUBLIC_APP_URL}/report/${session_id}`,
+          share_url: `${getBaseUrl()}/report/${session_id}`,
         }, { onConflict: 'session_id' })
         .select('id')
         .single();
