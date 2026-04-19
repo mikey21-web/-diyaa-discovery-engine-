@@ -52,7 +52,7 @@ const ChatPage: React.FC = () => {
           {
             id: crypto.randomUUID(),
             role: 'assistant',
-            content: "I'm having trouble connecting right now. Tap retry to try again.",
+            content: "I&apos;m having trouble connecting right now. Tap retry to try again.",
           },
         ])
       }

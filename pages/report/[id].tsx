@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { motion } from 'framer-motion'
@@ -42,9 +42,9 @@ export default function ReportPage() {
   useEffect(() => {
     if (!session_id) return
     loadReport()
-  }, [session_id])
+  }, [session_id, loadReport])
 
-  const loadReport = async (attempt = 0) => {
+  const loadReport = useCallback(async (attempt = 0) => {
     try {
       const response = await fetch('/api/report-poll', {
         method: 'POST',
@@ -69,7 +69,7 @@ export default function ReportPage() {
     } catch (e) {
       setState('error')
     }
-  }
+  }, [session_id])
 
   if (state === 'loading' || state === 'generating') {
     return (
@@ -85,7 +85,7 @@ export default function ReportPage() {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center">
         <h1 className="text-xl font-bold text-zinc-900">Something went wrong</h1>
-        <p className="text-zinc-500 mt-2">We couldn't load your report. Please try refreshing.</p>
+        <p className="text-zinc-500 mt-2">We couldn&apos;t load your report. Please try refreshing.</p>
         <button 
           onClick={() => window.location.reload()}
           className="mt-6 px-6 py-2 bg-zinc-900 text-white rounded-lg font-bold"
@@ -155,7 +155,7 @@ function ReportContentView({ data }: { data: ReportData }) {
               {businessName}
             </h1>
             <p className="text-base md:text-xl text-zinc-500 max-w-2xl mx-auto mb-12 md:mb-16 leading-relaxed">
-              Here's exactly where AI fits in your business — and what it costs you not to act.
+              Here&apos;s exactly where AI fits in your business — and what it costs you not to act.
             </p>
 
             <div className="relative inline-block group max-w-full">
@@ -308,7 +308,7 @@ function ReportContentView({ data }: { data: ReportData }) {
                 </div>
                 
                 <blockquote className="text-2xl md:text-3xl font-medium leading-relaxed italic text-zinc-300">
-                  "{udayBriefing || `Your business is prime for AI integration. The ${formatINR(annualLeak)} leak is just the beginning of what we can recover.`}"
+                  &quot;{udayBriefing || `Your business is prime for AI integration. The ${formatINR(annualLeak)} leak is just the beginning of what we can recover.`}&quot;
                 </blockquote>
              </div>
              
