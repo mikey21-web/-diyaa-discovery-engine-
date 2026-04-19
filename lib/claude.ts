@@ -20,6 +20,16 @@ if (GROQ_KEYS.length === 0) {
   logger.warn('No Groq API keys found in environment variables.')
 }
 
+export class UpstreamBusyError extends Error {
+  readonly retryAfterSeconds: number
+
+  constructor(message: string, retryAfterSeconds = 30) {
+    super(message)
+    this.name = 'UpstreamBusyError'
+    this.retryAfterSeconds = retryAfterSeconds
+  }
+}
+
 /**
  * Returns a random key from the pool.
  * Random is preferred over sequential for Serverless (Vercel)
@@ -39,13 +49,12 @@ async function callGroq(
   const maxAttempts = Math.max(GROQ_KEYS.length, 1)
 
   if (attempt >= maxAttempts && GROQ_KEYS.length > 0) {
-    // Notify admin that ALL keys are exhausted
     await sendErrorAlert({
       error: 'All Groq API keys exhausted or rate limited.',
       keyIndex: attempt,
       allKeysExhausted: true
     })
-    throw new Error('All Groq API keys exhausted')
+    throw new UpstreamBusyError('Server is busy right now. Please try again in 30 seconds.')
   }
 
   // Get a random key that hasn't failed in this specific request chain
@@ -64,20 +73,21 @@ async function callGroq(
       temperature: 0.7,
     })
     return response.choices[0]?.message?.content ?? ''
-  } catch (error: any) {
-    const status = error.status
+  } catch (error: unknown) {
+    const err = error as { status?: number; message?: string }
+    const status = err.status
     const isRateLimit = status === 429 || status === 402 || status === 413
 
     logger.warn(`Groq key failure (Attempt ${attempt + 1})`, {
       status,
       index,
-      error: error.message
+      error: err.message
     })
 
     // Notify admin about individual key failure if it's not just a transient error
-    if (isRateLimit || status >= 500) {
+    if (isRateLimit || (typeof status === 'number' && status >= 500)) {
       await sendErrorAlert({
-        error: error.message,
+        error: err.message || 'Unknown Groq error',
         status,
         keyIndex: index,
         allKeysExhausted: attempt + 1 >= maxAttempts
@@ -88,6 +98,10 @@ async function callGroq(
       // Small delay before trying next key
       await new Promise(r => setTimeout(r, 1000))
       return callGroq(messages, attempt + 1, usedIndices)
+    }
+
+    if (isRateLimit) {
+      throw new UpstreamBusyError('Server is busy right now. Please try again in 30 seconds.')
     }
 
     throw error
@@ -263,7 +277,7 @@ export type ClaudeResponse = {
   content: string
   phase: number
   reportReady: boolean
-  extractedData?: any
+  extractedData?: Record<string, unknown> | null
 }
 
 export async function getClaudeResponse(
@@ -272,12 +286,10 @@ export async function getClaudeResponse(
 ): Promise<ClaudeResponse> {
   const systemPrompt = getSystemPrompt(currentPhase)
 
-  const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
+  const rawResponse = await callGroq([
     { role: 'system', content: systemPrompt },
     ...conversationHistory,
-  ]
-
-  const rawResponse = await callGroq(messages)
+  ])
 
   // 1. Extract Phase
   let phase = currentPhase
@@ -305,12 +317,12 @@ export async function getClaudeResponse(
       try {
         extractedData = JSON.parse(afterToken.substring(start, end + 1).trim());
       } catch (e) {
-        console.error('[REPORT_READY] JSON parse failed:', afterToken.substring(0, 300));
+        logger.error('[REPORT_READY] JSON parse failed', { sample: afterToken.substring(0, 300) })
         reportReady = false;
         extractedData = null;
       }
     } else {
-      console.error('[REPORT_READY] No JSON block found after token');
+      logger.error('[REPORT_READY] No JSON block found after token')
       reportReady = false;
     }
   }

@@ -1,10 +1,25 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { ArrowRight, MessageSquare, TrendingUp, Zap, ChevronRight } from 'lucide-react'
 
 const LandingPage: React.FC = () => {
+  const [auditedCount, setAuditedCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    fetch('/api/stats')
+      .then((res) => res.json())
+      .then((data) => {
+        if (typeof data?.sessions_count === 'number') {
+          setAuditedCount(data.sessions_count)
+        }
+      })
+      .catch(() => {
+        // no-op: fallback value is shown
+      })
+  }, [])
+
   return (
     <div className="min-h-screen bg-warm-bg font-sans selection:bg-amber-bg selection:text-charcoal">
       <Head>
@@ -72,12 +87,6 @@ const LandingPage: React.FC = () => {
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </button>
               </Link>
-              <button
-                className="w-full sm:w-auto px-8 py-4 bg-transparent text-charcoal-mid font-semibold rounded-2xl text-base
-                           border border-warm-border hover:border-warm-muted transition-all"
-              >
-                See Sample Report
-              </button>
             </div>
           </motion.div>
         </div>
@@ -91,11 +100,11 @@ const LandingPage: React.FC = () => {
         className="pb-20 px-6"
       >
         <div className="max-w-4xl mx-auto flex flex-wrap justify-center gap-8 md:gap-16 py-8 border-y border-warm-border">
-          {[
-            { value: '₹1.8Cr+', label: 'Revenue leaks identified' },
-            { value: '450+', label: 'Businesses audited' },
-            { value: '95.6%', label: 'Plan AI adoption in 2025' },
-          ].map((stat, i) => (
+            {[
+              { value: '₹1.8Cr+', label: 'Revenue leaks identified' },
+              { value: auditedCount ? `${auditedCount}+` : '450+', label: 'Businesses audited' },
+              { value: '95.6%', label: 'Plan AI adoption in 2025' },
+            ].map((stat, i) => (
             <div key={i} className="text-center min-w-[120px]">
               <p className="text-2xl md:text-3xl font-bold text-charcoal">{stat.value}</p>
               <p className="text-xs text-warm-muted font-medium mt-1">{stat.label}</p>

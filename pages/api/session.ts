@@ -13,23 +13,18 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<CreateSessionResponse | ApiError>
 ) {
+  const requestId = Math.random().toString(36).slice(2, 10)
+  const startedAt = Date.now()
+
   // FIX 6 — HTTP Method Guard
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' })
   }
 
-  // FIX 1 — Rate Limiting
-  const ip = getIP(req);
-  const { allowed } = rateLimit(ip, { limit: 10, windowMs: 60 * 60 * 1000 }); // 10 sessions per IP per hour
+  const ip = getIP(req)
+  const { allowed } = await rateLimit(ip, { limit: 10, windowMs: 60 * 60 * 1000 })
   if (!allowed) {
-    return res.status(429).json({ error: 'Too many sessions. Please try again later.', code: 'RATE_LIMIT_EXCEEDED' } as any);
-  }
-
-  // FIX 5 — Input Validation
-  const { vertical, metadata } = req.body;
-
-  if (!vertical || typeof vertical !== 'string' || vertical.length > 100) {
-    return res.status(400).json({ error: 'Invalid vertical', code: 'BAD_REQUEST' } as any);
+    return res.status(429).json({ error: 'Too many sessions. Please try again later.', code: 'RATE_LIMIT_EXCEEDED' })
   }
 
   try {
@@ -40,8 +35,6 @@ export default async function handler(
       .insert({
         status: 'active',
         phase: 1,
-        vertical,
-        metadata,
         conversation_history: [
           {
             role: 'assistant',
@@ -60,7 +53,7 @@ export default async function handler(
       return res.status(500).json({ error: 'Failed to create session', code: 'DB_ERROR' })
     }
 
-    logger.info('Session created', { sessionId: data.id })
+    logger.info('Session created', { sessionId: data.id, requestId })
 
     return res.status(201).json({
       session_id: data.id,
@@ -69,7 +62,9 @@ export default async function handler(
     })
   } catch (err) {
     const error = err as Error
-    logger.error('Session creation failed', { message: error.message })
+    logger.error('Session creation failed', { message: error.message, requestId })
     return res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' })
+  } finally {
+    logger.info('Session request completed', { requestId, durationMs: Date.now() - startedAt })
   }
 }

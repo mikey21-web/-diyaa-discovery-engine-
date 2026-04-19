@@ -1,6 +1,14 @@
 import nodemailer from 'nodemailer'
 import { logger } from './logger'
 
+interface LeadEmailData {
+  name: string
+  email?: string
+  industry?: string | null
+  ai_readiness_score?: number | null
+  report_url?: string | null
+}
+
 /**
  * Configure Nodemailer for Gmail
  * Note: Requires Gmail App Password (not standard account password)
@@ -22,7 +30,7 @@ const createTransporter = () => {
   })
 }
 
-export async function sendLeadEmail(leadData: any) {
+export async function sendLeadEmail(leadData: LeadEmailData) {
   const transporter = createTransporter()
   const { ADMIN_EMAIL } = process.env
 
@@ -101,4 +109,3 @@ export async function sendErrorAlert(errorDetails: {
     logger.error('Failed to send error alert email via Gmail', { error })
   }
 }
-

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -12,57 +12,66 @@ interface Message {
 
 interface LeadFormData {
   name: string
-  email: string
+  email?: string
+  whatsapp: string
 }
 
 const ChatPage: React.FC = () => {
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionLoading, setSessionLoading] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [initFailed, setInitFailed] = useState(false)
   const [phase, setPhase] = useState(1)
   const [reportReady, setReportReady] = useState(false)
-  const [reportId, setReportId] = useState<string | null>(null)
   const [showLeadForm, setShowLeadForm] = useState(false)
-  const [leadForm, setLeadForm] = useState<LeadFormData>({ name: '', email: '' })
+  const [leadForm, setLeadForm] = useState<LeadFormData>({ name: '', email: '', whatsapp: '+91' })
   const [leadSubmitting, setLeadSubmitting] = useState(false)
   const [leadSubmitted, setLeadSubmitted] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const safeId = () => Math.random().toString(36).substring(2, 15)
+
+  const initSession = useCallback(async (): Promise<string | null> => {
+    if (sessionLoading) return null
+
+    setSessionLoading(true)
+    setInitFailed(false)
+    try {
+      const res = await fetch('/api/session', { method: 'POST' })
+      const data = await res.json()
+
+      if (data.error) throw new Error(data.error)
+
+      setSessionId(data.session_id)
+      setMessages([
+        {
+          id: safeId(),
+          role: 'assistant',
+          content: data.opening_message,
+        },
+      ])
+      setSessionLoading(false)
+      return data.session_id as string
+    } catch {
+      setInitFailed(true)
+      setMessages([
+        {
+          id: safeId(),
+          role: 'assistant',
+          content: "I'm having trouble connecting. Check your internet or ensure your Vercel Environment Variables (Supabase/Groq) are set.",
+        },
+      ])
+      setSessionLoading(false)
+      return null
+    }
+  }, [sessionLoading])
 
   // Create session on mount
-    const safeId = () => Math.random().toString(36).substring(2, 15);
-    
-    const initSession = async () => {
-      setInitFailed(false)
-      try {
-        const res = await fetch('/api/session', { method: 'POST' })
-        const data = await res.json()
-        
-        if (data.error) throw new Error(data.error);
-
-        setSessionId(data.session_id)
-        setMessages([
-          {
-            id: safeId(),
-            role: 'assistant',
-            content: data.opening_message,
-          },
-        ])
-      } catch (err) {
-        setInitFailed(true)
-        setMessages([
-          {
-            id: safeId(),
-            role: 'assistant',
-            content: "I'm having trouble connecting. Check your internet or ensure your Vercel Environment Variables (Supabase/Groq) are set.",
-          },
-        ])
-      }
-    }
+  useEffect(() => {
     initSession()
-  }, [])
+  }, [initSession])
 
   // Auto-scroll
   useEffect(() => {
@@ -79,11 +88,27 @@ const ChatPage: React.FC = () => {
   }, [isLoading])
 
   const handleSend = async () => {
-    if (!input.trim() || isLoading || !sessionId) return
+    if (!input.trim() || isLoading) return
+
+    let activeSessionId = sessionId
+    if (!activeSessionId) {
+      activeSessionId = await initSession()
+    }
+
+    if (!activeSessionId) {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: safeId(),
+          role: 'assistant',
+          content: 'Session is still starting. Please wait a moment and try again.',
+        },
+      ])
+      return
+    }
 
     const userMessage = input.trim()
-    const safeId = () => Math.random().toString(36).substring(2, 15);
-    
+
     setInput('')
     if (inputRef.current) {
       inputRef.current.style.height = 'auto'
@@ -95,7 +120,7 @@ const ChatPage: React.FC = () => {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, message: userMessage }),
+        body: JSON.stringify({ session_id: activeSessionId, message: userMessage }),
       })
 
       const data = await res.json()
@@ -103,7 +128,13 @@ const ChatPage: React.FC = () => {
       if (data.error) {
         setMessages(prev => [
           ...prev,
-          { id: safeId(), role: 'assistant', content: `Error: ${data.error}. Please try again.` },
+          {
+            id: safeId(),
+            role: 'assistant',
+            content: data.code === 'UPSTREAM_BUSY'
+              ? 'Server is busy right now due to high traffic. Please try again in about 30 seconds.'
+              : `Error: ${data.error}. Please try again.`,
+          },
         ])
       } else {
         setMessages(prev => [...prev, { id: safeId(), role: 'assistant', content: data.reply }])
@@ -111,7 +142,6 @@ const ChatPage: React.FC = () => {
 
         if (data.report_ready) {
           setReportReady(true)
-          setReportId(data.report_id || sessionId)
           // Show lead form after a moment
           setTimeout(() => setShowLeadForm(true), 2000)
         }
@@ -127,9 +157,9 @@ const ChatPage: React.FC = () => {
   }
 
   const handleLeadSubmit = async () => {
-    const hasEmail = !!leadForm.email?.trim()
+    const hasWhatsapp = !!leadForm.whatsapp?.trim()
 
-    if (!leadForm.name || !hasEmail || !sessionId) return
+    if (!leadForm.name || !hasWhatsapp || !sessionId) return
     setLeadSubmitting(true)
 
     try {
@@ -139,7 +169,8 @@ const ChatPage: React.FC = () => {
         body: JSON.stringify({
           session_id: sessionId,
           name: leadForm.name,
-          email: leadForm.email,
+          email: leadForm.email?.trim() || undefined,
+          whatsapp: leadForm.whatsapp,
         }),
       })
       setLeadSubmitted(true)
@@ -233,20 +264,7 @@ const ChatPage: React.FC = () => {
           className="p-4 bg-warm-bg border-t border-warm-border shrink-0 text-center"
         >
           <button
-            onClick={() => {
-              const initSession = async () => {
-                setInitFailed(false)
-                try {
-                  const res = await fetch('/api/session', { method: 'POST' })
-                  const data = await res.json()
-                  setSessionId(data.session_id)
-                  setMessages([{ id: crypto.randomUUID(), role: 'assistant', content: data.opening_message }])
-                } catch {
-                  setInitFailed(true)
-                }
-              }
-              initSession()
-            }}
+            onClick={initSession}
             className="px-6 py-3 bg-amber text-charcoal font-bold rounded-xl hover:bg-amber-hover transition-all active:scale-[0.98] text-sm"
           >
             Connection failed — tap to retry
@@ -278,13 +296,13 @@ const ChatPage: React.FC = () => {
                   }
                 }}
                 placeholder="Type your answer..."
-                disabled={isLoading}
+                disabled={isLoading || sessionLoading}
                 className="w-full bg-transparent outline-none resize-none text-[15px] text-charcoal
                            placeholder:text-warm-muted disabled:opacity-50 leading-relaxed max-h-[200px] overflow-y-auto py-1"
               />
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || isLoading}
+                disabled={!input.trim() || isLoading || sessionLoading}
                 className="p-2 text-amber disabled:text-warm-border transition-colors shrink-0"
               >
                 <Send className="w-4 h-4" />
@@ -342,11 +360,25 @@ const ChatPage: React.FC = () => {
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-charcoal-mid uppercase tracking-wide mb-1 block">
-                    Email *
+                    WhatsApp *
+                  </label>
+                  <input
+                    type="tel"
+                    value={leadForm.whatsapp}
+                    onChange={(e) => setLeadForm(prev => ({ ...prev, whatsapp: e.target.value }))}
+                    placeholder="+91XXXXXXXXXX"
+                    className="w-full px-4 py-3 bg-warm-bg border border-warm-border rounded-xl text-sm
+                              text-charcoal placeholder:text-warm-muted outline-none
+                              focus:border-amber/50 focus:ring-2 focus:ring-amber-bg transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-charcoal-mid uppercase tracking-wide mb-1 block">
+                    Email (optional)
                   </label>
                   <input
                     type="email"
-                    value={leadForm.email}
+                    value={leadForm.email || ''}
                     onChange={(e) => setLeadForm(prev => ({ ...prev, email: e.target.value }))}
                     placeholder="you@company.com"
                     className="w-full px-4 py-3 bg-warm-bg border border-warm-border rounded-xl text-sm
@@ -358,7 +390,7 @@ const ChatPage: React.FC = () => {
 
               <button
                 onClick={handleLeadSubmit}
-                disabled={!leadForm.name || !leadForm.email || leadSubmitting}
+                disabled={!leadForm.name || !leadForm.whatsapp || leadSubmitting}
                 className="w-full mt-5 px-6 py-4 bg-amber text-charcoal font-bold rounded-xl
                            hover:bg-amber-hover transition-all active:scale-[0.98]
                            disabled:opacity-50 disabled:cursor-not-allowed

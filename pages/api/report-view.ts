@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServiceClient } from '@/lib/supabase'
+import { logger } from '@/lib/logger'
 
 export default async function handler(
   req: NextApiRequest,
@@ -30,7 +31,8 @@ export default async function handler(
     return res.status(200).json({ ok: true })
 
   } catch (error) {
-    console.error('View count error:', error)
+    const err = error as Error
+    logger.warn('View count update failed', { message: err.message })
     // Fail silently — never break the report page over analytics
     return res.status(200).json({ ok: true })
   }

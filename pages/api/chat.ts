@@ -6,25 +6,30 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServiceClient } from '@/lib/supabase'
-import { getClaudeResponse } from '@/lib/claude'
+import { getClaudeResponse, UpstreamBusyError } from '@/lib/claude'
 import { logger } from '@/lib/logger'
 import type { ChatRequest, ChatResponse, ApiError, ConversationMessage } from '@/lib/types'
+import { compactConversationHistory } from '@/lib/chatContext'
+import { processDueJobs } from '@/lib/jobs'
 
-import { rateLimit } from '@/lib/rateLimit'
+import { rateLimit, getIP } from '@/lib/rateLimit'
 import { getBaseUrl } from '@/lib/utils'
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ChatResponse | ApiError>
 ) {
+  const requestId = Math.random().toString(36).slice(2, 10)
+  const startedAt = Date.now()
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' })
   }
 
-  const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
-  const { allowed } = rateLimit(ip, { limit: 10, windowMs: 60000 });
+  const ip = getIP(req)
+  const { allowed } = await rateLimit(ip, { limit: 10, windowMs: 60000 })
   if (!allowed) {
-    return res.status(429).json({ error: 'Too many messages. Please wait 1 minute.', code: 'RATE_LIMIT_EXCEEDED' });
+    return res.status(429).json({ error: 'Too many messages. Please wait 1 minute.', code: 'RATE_LIMIT_EXCEEDED' })
   }
 
   const { session_id, message } = req.body as ChatRequest
@@ -57,10 +62,7 @@ export default async function handler(
       timestamp: new Date().toISOString(),
     })
 
-    const claudeMessages = history.map(msg => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    }))
+    const claudeMessages = compactConversationHistory(history)
 
     const claudeResponse = await getClaudeResponse(claudeMessages, session.phase)
 
@@ -73,8 +75,8 @@ export default async function handler(
     let reportId: string | undefined
 
     // ATOMIC PREPARATION
-    const isReportReady = claudeResponse.reportReady && claudeResponse.extractedData;
-    const finalStatus = isReportReady ? 'report_generated' : 'active';
+    const isReportReady = Boolean(claudeResponse.reportReady && claudeResponse.extractedData)
+    const finalStatus = isReportReady ? 'report_generated' : 'active'
 
     const { error: updateError } = await supabase
       .from('sessions')
@@ -100,20 +102,30 @@ export default async function handler(
           share_url: `${getBaseUrl()}/report/${session_id}`,
         }, { onConflict: 'session_id' })
         .select('id')
-        .single();
+        .single()
       
-      reportId = report?.id;
+      reportId = report?.id
     }
 
     return res.status(200).json({
       reply: claudeResponse.content,
       phase: claudeResponse.phase,
-      report_ready: claudeResponse.reportReady,
+      report_ready: isReportReady,
       report_id: reportId,
     })
   } catch (err) {
+    if (err instanceof UpstreamBusyError) {
+      return res.status(503).json({ error: err.message, code: 'UPSTREAM_BUSY' })
+    }
+
     const error = err as Error
-    logger.error('Chat error:', { msg: error.message });
+    logger.error('Chat error', { msg: error.message, requestId })
     return res.status(500).json({ error: 'Service Unavailable', code: 'INTERNAL_ERROR' })
+  } finally {
+    processDueJobs(5).catch((err: unknown) => {
+      const error = err as Error
+      logger.warn('Background job drain failed from chat', { requestId, message: error.message })
+    })
+    logger.info('Chat request completed', { requestId, durationMs: Date.now() - startedAt })
   }
 }

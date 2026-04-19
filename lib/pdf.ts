@@ -16,6 +16,15 @@ function formatINR(amount: number): string {
   return `₹${amount.toLocaleString('en-IN')}`
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function calculateAnnualLeak(leak: RevenueLeak): number {
   return leak.frequency_per_week * 52 * leak.estimated_cost_inr
 }
@@ -36,13 +45,22 @@ export function generateReportHTML(
     month: 'long',
     year: 'numeric',
   })
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://diyaaaa.in'
+  const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '918074228036'
+  const calLink = process.env.NEXT_PUBLIC_CAL_LINK || '#'
+
+  const businessName = escapeHtml(extractedData.business_name || extractedData.business || 'Your Business')
+  const city = extractedData.city ? escapeHtml(String(extractedData.city)) : ''
+  const industryLabel = escapeHtml((extractedData.industry || 'other').replace(/_/g, ' '))
+  const toolsLabel = (extractedData.tools_used || []).slice(0, 4).map((t) => escapeHtml(t)).join(', ')
+  const painPointsLabel = (extractedData.top_pain_points || []).slice(0, 2).map((p) => escapeHtml(p)).join(' and ')
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${extractedData.business_name} — AI Implementation Report | diyaa.ai</title>
+  <title>${businessName} — AI Implementation Report | diyaa.ai</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -154,11 +172,11 @@ export function generateReportHTML(
         <span class="logo-text">diyaa.ai</span>
       </div>
       <h1>AI Implementation Report</h1>
-      <p class="subtitle">Prepared for <strong>${extractedData.business_name}</strong>${extractedData.city ? `, ${extractedData.city}` : ''}</p>
+      <p class="subtitle">Prepared for <strong>${businessName}</strong>${city ? `, ${city}` : ''}</p>
     </div>
     <div class="meta">
       <p>${dateStr}</p>
-      <p style="text-transform:capitalize">${(extractedData.industry || 'other').replace(/_/g, ' ')}</p>
+      <p style="text-transform:capitalize">${industryLabel}</p>
     </div>
   </div>
 
@@ -166,7 +184,7 @@ export function generateReportHTML(
   <div class="section">
     <div class="section-title"><span class="section-num">1</span> Business Snapshot</div>
     <div class="card">
-      <p>${extractedData.business_name || extractedData.business || 'Your Business'} is a ${(extractedData.industry || 'other').replace(/_/g, ' ')} business${extractedData.city ? ` based in ${extractedData.city}` : ''} with a team of ${extractedData.team_size || 'N/A'}. ${(extractedData.tools_used?.length ?? 0) > 0 ? `They currently use ${extractedData.tools_used!.slice(0, 4).join(', ')} in their daily operations.` : ''} ${(extractedData.top_pain_points?.length ?? 0) > 0 ? `Their primary challenges include ${extractedData.top_pain_points!.slice(0, 2).join(' and ')}.` : ''}</p>
+      <p>${businessName} is a ${industryLabel} business${city ? ` based in ${city}` : ''} with a team of ${extractedData.team_size || 'N/A'}. ${(extractedData.tools_used?.length ?? 0) > 0 ? `They currently use ${toolsLabel} in their daily operations.` : ''} ${(extractedData.top_pain_points?.length ?? 0) > 0 ? `Their primary challenges include ${painPointsLabel}.` : ''}</p>
     </div>
   </div>
 
@@ -195,7 +213,7 @@ export function generateReportHTML(
       const annual = calculateAnnualLeak(leak)
       return `<div class="leak-row">
         <div>
-          <div class="leak-desc">${leak.description}</div>
+          <div class="leak-desc">${escapeHtml(leak.description)}</div>
           <div class="leak-detail">~${leak.frequency_per_week}x/week × ${formatINR(leak.estimated_cost_inr)}/instance</div>
         </div>
         <div class="leak-amount">${formatINR(annual)}/yr</div>
@@ -244,15 +262,15 @@ export function generateReportHTML(
   <div class="section">
     <div class="section-title"><span class="section-num">6</span> Next Step</div>
     <div class="cta-section">
-      <p class="cta-text">Based on what you have shared, the fastest ROI is automating your lead response and follow-up system. diyaa.ai has built this for multiple ${(extractedData.industry || 'other').replace(/_/g, ' ')} clients. Book a 30-minute call to see a live demo.</p>
+      <p class="cta-text">Based on what you have shared, the fastest ROI is automating your lead response and follow-up system. diyaa.ai has built this for multiple ${industryLabel} clients. Book a 30-minute call to see a live demo.</p>
       <div class="cta-buttons">
-        <a href="#" class="cta-btn-primary">Book a Call</a>
-        <a href="https://wa.me/918074228036" class="cta-btn-secondary">WhatsApp Uday</a>
+        <a href="${escapeHtml(calLink)}" class="cta-btn-primary">Book a Call</a>
+        <a href="https://wa.me/${escapeHtml(whatsappNumber)}" class="cta-btn-secondary">WhatsApp Uday</a>
       </div>
     </div>
   </div>
 
-  <div class="footer">Generated by diyaa.ai — Get your free AI audit at diyaaaa.in</div>
+  <div class="footer">Generated by diyaa.ai — Get your free AI audit at ${escapeHtml(appUrl.replace(/^https?:\/\//, ''))}</div>
 </div>
 </body>
 </html>`

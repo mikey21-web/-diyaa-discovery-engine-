@@ -6,22 +6,41 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServiceClient } from '@/lib/supabase'
 import { logger } from '@/lib/logger'
-import { sendLeadEmail } from '@/lib/email'
+import { enqueueJob, processDueJobs } from '@/lib/jobs'
 import type { LeadRequest, LeadResponse, ApiError, ExtractedData } from '@/lib/types'
+
+function normalizeWhatsapp(input: string): string {
+  return input.replace(/[^\d+]/g, '')
+}
+
+function isValidWhatsapp(input: string): boolean {
+  const normalized = normalizeWhatsapp(input)
+  return /^\+?\d{10,15}$/.test(normalized)
+}
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<LeadResponse | ApiError>
 ) {
+  const requestId = Math.random().toString(36).slice(2, 10)
+  const startedAt = Date.now()
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' })
   }
 
-  const { session_id, name, email } = req.body;
+  const { session_id, name, email, whatsapp } = req.body as LeadRequest
 
-  // Manual Validation (Production Grade)
-  if (!session_id || !name || !email || !email.includes('@')) {
-    return res.status(400).json({ error: 'Valid Name and Email required.', code: 'INVALID_INPUT' });
+  if (!session_id || !name || !whatsapp) {
+    return res.status(400).json({ error: 'Name and WhatsApp are required.', code: 'INVALID_INPUT' })
+  }
+
+  if (!isValidWhatsapp(whatsapp)) {
+    return res.status(400).json({ error: 'Enter a valid WhatsApp number.', code: 'INVALID_INPUT' })
+  }
+
+  if (email && !email.includes('@')) {
+    return res.status(400).json({ error: 'Enter a valid email address.', code: 'INVALID_INPUT' })
   }
 
   try {
@@ -45,37 +64,54 @@ export default async function handler(
     const { error: insertError } = await supabase.from('leads').insert({
       session_id,
       name,
-      email,
+      email: email || null,
+      whatsapp: normalizeWhatsapp(whatsapp),
       industry: extractedData?.industry || null,
       city: extractedData?.city || null,
       report_url: reportUrl,
       status: 'new',
       email_failed: false
-    });
+    })
 
-    if (insertError) throw insertError;
+    if (insertError) throw insertError
 
     // 3. Mark session complete
-    await supabase.from('sessions').update({ lead_captured: true }).eq('id', session_id);
+    await supabase.from('sessions').update({ lead_captured: true }).eq('id', session_id)
 
-    // 4. Background Email Dispatch (Fire and Forget with Recovery Log)
-    sendLeadEmail({
-      name,
-      email,
+    // 4. Queue async side effects for reliable retries
+    const normalizedWhatsapp = normalizeWhatsapp(whatsapp)
+
+    await enqueueJob('lead_webhook', {
       session_id,
-      industry: extractedData?.industry,
-      city: extractedData?.city,
+      name,
+      email: email || null,
+      whatsapp: normalizedWhatsapp,
+      industry: extractedData?.industry || null,
+      city: extractedData?.city || null,
       report_url: reportUrl,
-      ai_readiness_score: extractedData?.ai_readiness_score,
-    }).catch(async (e) => {
-      logger.error('CRITICAL: Email failed for lead', { email, session_id, err: e });
-      await supabase.from('leads').update({ email_failed: true }).eq('session_id', session_id);
-    });
+      ai_readiness_score: extractedData?.ai_readiness_score ?? null,
+    })
 
-    return res.status(200).json({ success: true });
+    await enqueueJob('lead_email', {
+      name,
+      email: email || null,
+      industry: extractedData?.industry || null,
+      report_url: reportUrl,
+      ai_readiness_score: extractedData?.ai_readiness_score ?? null,
+      session_id,
+    })
+
+    processDueJobs(10).catch((jobErr: unknown) => {
+      const err = jobErr as Error
+      logger.warn('Opportunistic job processing failed', { message: err.message })
+    })
+
+    return res.status(200).json({ success: true })
   } catch (err) {
     const error = err as Error
-    logger.error('Lead Capture Crash:', { msg: error.message });
+    logger.error('Lead Capture Crash', { msg: error.message, requestId })
     return res.status(500).json({ error: 'Could not capture lead. Please try again.', code: 'INTERNAL_ERROR' })
+  } finally {
+    logger.info('Lead request completed', { requestId, durationMs: Date.now() - startedAt })
   }
 }

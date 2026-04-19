@@ -3,12 +3,8 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { motion } from 'framer-motion'
 import { 
-  ArrowRight,
   Mail,
   ExternalLink,
-  ChevronRight,
-  TrendingDown,
-  Timer,
   CheckCircle2,
   XCircle
 } from 'lucide-react'
@@ -21,7 +17,7 @@ function formatINR(amount: number): string {
   return `₹${amount.toLocaleString('en-IN')}`
 }
 
-type ReportState = 'loading' | 'ready' | 'generating' | 'error'
+type ReportState = 'loading' | 'ready' | 'error'
 
 interface ReportData {
   founderName: string
@@ -35,6 +31,8 @@ interface ReportData {
 export default function ReportPage() {
   const router = useRouter()
   const session_id = router.query.id as string
+  const calLink = process.env.NEXT_PUBLIC_CAL_LINK || '#'
+  const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '918074228036'
 
   const [state, setState] = useState<ReportState>('loading')
   const [reportData, setReportData] = useState<ReportData | null>(null)
@@ -60,7 +58,6 @@ export default function ReportPage() {
         setState('error')
       }
     } catch (err) {
-      console.error('Report error:', err)
       setState('error')
     }
   }, [session_id])
@@ -70,7 +67,18 @@ export default function ReportPage() {
     loadReport()
   }, [session_id, loadReport])
 
-  if (state === 'loading' || state === 'generating') {
+  useEffect(() => {
+    if (!session_id || state !== 'ready') return
+    fetch('/api/report-view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id }),
+    }).catch(() => {
+      // no-op: analytics should not block report rendering
+    })
+  }, [session_id, state])
+
+  if (state === 'loading') {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center">
         <div className="w-12 h-12 border-4 border-zinc-100 border-t-zinc-900 rounded-full animate-spin mb-6" />
@@ -98,11 +106,21 @@ export default function ReportPage() {
   return (
     <ReportContentView 
       data={reportData}
+      calLink={calLink}
+      whatsappLink={`https://wa.me/${whatsappNumber}`}
     />
   )
 }
 
-function ReportContentView({ data }: { data: ReportData }) {
+function ReportContentView({
+  data,
+  calLink,
+  whatsappLink,
+}: {
+  data: ReportData
+  calLink: string
+  whatsappLink: string
+}) {
   const { founderName, businessName, extractedData } = data
   const annualLeak = extractedData.revenue_leak_inr_per_year || 0
   const breakdown = extractedData.revenue_leak_breakdown || []
@@ -126,8 +144,8 @@ function ReportContentView({ data }: { data: ReportData }) {
             <span className="font-bold tracking-tight">diyaa.ai</span>
           </div>
           <div className="hidden md:flex gap-4">
-            <a href="mailto:udayakirantumma@gmail.com" className="text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors">Email</a>
-            <a href="https://diyaaaa.in" target="_blank" rel="noreferrer" className="text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors">Portfolio</a>
+            <a href={calLink} target="_blank" rel="noreferrer" className="text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors">Book Call</a>
+            <a href={whatsappLink} target="_blank" rel="noreferrer" className="text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors">WhatsApp</a>
           </div>
           <div className="md:hidden">
              <span className="px-2 py-1 bg-zinc-100 text-zinc-500 text-[10px] font-bold uppercase rounded">Report v5.0</span>
@@ -313,19 +331,21 @@ function ReportContentView({ data }: { data: ReportData }) {
              
              <div className="relative z-10 flex flex-col gap-4">
                 <a 
-                  href="mailto:udayakirantumma@gmail.com" 
+                  href={calLink}
+                  target="_blank"
+                  rel="noreferrer"
                   className="w-full flex items-center justify-between px-8 py-5 border border-zinc-700 rounded-2xl hover:bg-zinc-800 transition-all font-bold"
                 >
-                  <span>Email Uday Directly</span>
+                  <span>Book 30-min Call</span>
                   <Mail className="w-5 h-5 text-zinc-500" />
                 </a>
                 <a 
-                  href="https://diyaaaa.in" 
+                  href={whatsappLink}
                   target="_blank" 
                   rel="noreferrer"
                   className="w-full flex items-center justify-between px-8 py-5 border border-zinc-700 rounded-2xl hover:bg-zinc-800 transition-all font-bold"
                 >
-                  <span>View Portfolio</span>
+                  <span>Message on WhatsApp</span>
                   <ExternalLink className="w-5 h-5 text-zinc-500" />
                 </a>
                 <p className="text-center text-xs text-zinc-500 font-medium">
@@ -346,20 +366,22 @@ function ReportContentView({ data }: { data: ReportData }) {
       <div className="fixed bottom-6 left-6 right-6 z-50 md:hidden">
          <div className="bg-zinc-900/95 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl flex gap-3">
             <a 
-              href="mailto:udayakirantumma@gmail.com"
+              href={calLink}
+              target="_blank"
+              rel="noreferrer"
               className="flex-1 bg-white text-zinc-900 font-bold text-sm py-4 rounded-xl text-center"
             >
-              Email Uday
+              Book Call
             </a>
             <a 
-              href="https://diyaaaa.in"
+              href={whatsappLink}
               target="_blank"
               rel="noreferrer"
               className="flex-1 border border-zinc-700 text-white font-bold text-sm py-4 rounded-xl text-center"
             >
-              Portfolio
+              WhatsApp
             </a>
-         </div>
+          </div>
       </div>
 
     </div>

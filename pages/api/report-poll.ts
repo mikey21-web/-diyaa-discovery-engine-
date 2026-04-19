@@ -5,6 +5,16 @@ import { getScoreInterpretation } from '@/lib/scoring'
 import { logger } from '@/lib/logger'
 import type { ExtractedData, VerticalKey } from '@/lib/types'
 
+type LeadRow = { name: string | null }
+
+type SessionPollRow = {
+  extracted_data: ExtractedData | null
+  ai_readiness_score: number | null
+  updated_at: string | null
+  created_at: string
+  leads?: LeadRow[] | LeadRow | null
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -16,11 +26,13 @@ export default async function handler(
 
   try {
     const supabase = getServiceClient()
-    const { data: session } = await supabase
+    const { data: sessionData } = await supabase
       .from('sessions')
-      .select('extracted_data, ai_readiness_score, updated_at, created_at, leads!inner(name)')
+      .select('extracted_data, ai_readiness_score, updated_at, created_at, leads(name)')
       .eq('id', session_id)
       .single()
+
+    const session = sessionData as SessionPollRow | null
 
     if (!session || !session.extracted_data) {
       return res.status(200).json({ ready: false })
@@ -32,12 +44,14 @@ export default async function handler(
     const score = session.ai_readiness_score || extracted.ai_readiness_score || 0
     const interpretation = getScoreInterpretation(score)
 
+    const founderName = Array.isArray(session.leads)
+      ? (session.leads[0]?.name ?? '')
+      : (session.leads?.name ?? '')
+
     return res.status(200).json({
       ready: true,
       report: {
-        founderName: Array.isArray((session as any).leads) 
-          ? (session as any).leads[0]?.name 
-          : ((session as any).leads?.name || ''),
+        founderName,
         businessName: extracted.business_name || extracted.business || 'Your Business',
         industry: extracted.industry || 'other',
         city: extracted.city || '',

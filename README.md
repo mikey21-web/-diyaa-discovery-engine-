@@ -76,6 +76,10 @@ NEXT_PUBLIC_WHATSAPP_NUMBER=918074228036
 NEXT_PUBLIC_CAL_LINK=       # Cal.com booking link
 N8N_WEBHOOK_SECRET=         # n8n webhook auth
 N8N_LEAD_WEBHOOK_URL=       # n8n lead webhook endpoint
+UPSTASH_REDIS_REST_URL=     # optional, distributed rate limiting
+UPSTASH_REDIS_REST_TOKEN=   # optional, distributed rate limiting
+CRON_SECRET=                # required for /api/jobs/process
+ADMIN_API_SECRET=           # required for /api/admin/leads
 ```
 
 ## Supabase Setup
@@ -124,3 +128,5 @@ Set all environment variables in the Vercel dashboard.
 | POST/GET | `/api/report` | Fetch report data |
 | GET | `/api/report-html` | Get full HTML report (for PDF) |
 | POST | `/api/lead` | Capture lead + trigger n8n webhook |
+| POST | `/api/jobs/process` | Process queued background jobs (cron/worker) |
+| GET | `/api/admin/leads` | Paginated lead analytics (admin secret required) |

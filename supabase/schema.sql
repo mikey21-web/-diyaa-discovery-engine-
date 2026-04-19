@@ -34,10 +34,24 @@ create table if not exists leads (
   email text,
   whatsapp text,
   industry text,
+
   city text,
   report_url text,
   status text default 'new' check (status in ('new', 'contacted', 'qualified', 'converted')),
   created_at timestamptz default now()
+);
+
+-- Background jobs table: retryable async side effects (webhooks, emails)
+create table if not exists background_jobs (
+  id uuid primary key default gen_random_uuid(),
+  job_type text not null,
+  payload jsonb not null,
+  status text default 'pending' check (status in ('pending', 'processing', 'retry', 'done', 'failed')),
+  attempts int default 0,
+  next_run_at timestamptz default now(),
+  last_error text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
 );
 
 -- Indexes for common queries
@@ -46,11 +60,13 @@ create index if not exists idx_reports_session_id on reports(session_id);
 create index if not exists idx_leads_session_id on leads(session_id);
 create index if not exists idx_leads_status on leads(status);
 create index if not exists idx_leads_created_at on leads(created_at desc);
+create index if not exists idx_jobs_status_next_run on background_jobs(status, next_run_at);
 
 -- Enable RLS
 alter table sessions enable row level security;
 alter table reports enable row level security;
 alter table leads enable row level security;
+alter table background_jobs enable row level security;
 
 -- Policies: sessions are publicly readable/writable (no auth in this app)
 create policy "Sessions are publicly accessible"
@@ -79,6 +95,13 @@ create policy "Leads are insertable"
 create policy "Leads are readable by service role only"
   on leads for select
   using (auth.role() = 'service_role');
+
+drop policy if exists "Background jobs service role only" on background_jobs;
+
+create policy "Background jobs service role only"
+  on background_jobs for all
+  using (auth.role() = 'service_role')
+  with check (auth.role() = 'service_role');
 
 -- ========================================
 -- Schema Update 1: View Count Increment
@@ -127,3 +150,30 @@ $$ LANGUAGE plpgsql;
 -- ========================================
 
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS email_failed BOOLEAN DEFAULT FALSE;
+
+-- ========================================
+-- Schema Update 4: Harden RLS Policies
+-- ========================================
+
+DROP POLICY IF EXISTS "Sessions are publicly accessible" ON sessions;
+DROP POLICY IF EXISTS "Reports are insertable by service role" ON reports;
+DROP POLICY IF EXISTS "Reports are updatable" ON reports;
+DROP POLICY IF EXISTS "Leads are insertable" ON leads;
+
+CREATE POLICY "Sessions service role only"
+  ON sessions FOR ALL
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Reports insert service role only"
+  ON reports FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Reports update service role only"
+  ON reports FOR UPDATE
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Leads insert service role only"
+  ON leads FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');
