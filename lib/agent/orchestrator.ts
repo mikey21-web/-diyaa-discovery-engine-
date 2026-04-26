@@ -10,6 +10,7 @@ import { createClient } from '@supabase/supabase-js'
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
 const MAX_TOOL_ROUNDS = 5
 const RATE_LIMIT_COOLDOWN_MS = 60 * 1000 // 1 minute cooldown per key
+const AGENT_TURN_TIMEOUT_MS = 30 * 1000 // 30 second timeout for entire turn
 
 // Track rate-limited keys with expiry
 const rateLimitedKeys = new Map<string, number>()
@@ -118,15 +119,20 @@ async function appendHistory(
     .eq('id', sessionId)
 }
 
-export async function runAgentTurn(
+async function runAgentTurnInternal(
   sessionId: string,
   userMessage: string
 ): Promise<AgentTurnResult> {
+  const turnStartTime = Date.now()
+  const timings: Record<string, number> = {}
+
+  const loadStart = Date.now()
   const [model, history, phase] = await Promise.all([
     loadBusinessModel(sessionId),
     getConversationHistory(sessionId),
     getSessionPhase(sessionId),
   ])
+  timings.load = Date.now() - loadStart
 
   const updatedHistory: MessageParam[] = [
     ...history,
@@ -142,6 +148,7 @@ export async function runAgentTurn(
   let finalReply = ''
   let reportReady = false
   let salesPhaseTriggered = false
+  let groqCallCount = 0
 
   try {
     let toolRound = 0
@@ -154,6 +161,7 @@ export async function runAgentTurn(
         })),
       ]
 
+      const groqStart = Date.now()
       const response = await client.chat.completions.create({
         model: GROQ_MODEL,
         max_tokens: 1024,
@@ -161,6 +169,11 @@ export async function runAgentTurn(
         tool_choice: 'auto',
         messages: messages as any,
       })
+      groqCallCount++
+      const groqTime = Date.now() - groqStart
+      if (!timings.groq) timings.groq = 0
+      timings.groq += groqTime
+      logger.info('Groq call completed', { sessionId, round: toolRound, durationMs: groqTime, groqCallCount })
 
       const message = response.choices[0]?.message
       const content = message?.content ?? ''
@@ -197,7 +210,12 @@ export async function runAgentTurn(
 
         toolCallsMade.push(toolCall.function.name)
         const input = JSON.parse(toolCall.function.arguments)
+        const toolStart = Date.now()
         const toolResult = await executeTool(toolCall.function.name, input, currentModel)
+        const toolTime = Date.now() - toolStart
+        if (!timings.tools) timings.tools = 0
+        timings.tools += toolTime
+        logger.info('Tool execution completed', { sessionId, tool: toolCall.function.name, durationMs: toolTime })
 
         // Apply model patch if tool returned one
         if (toolResult.model_patch) {
@@ -297,9 +315,12 @@ Make the founder feel the competitive pressure. Be specific, not generic.`
 
   // Unified synthesis trigger: run when report is ready or synthesis is needed
   if ((reportReady || newPhase === 'complete' || (salesPhaseTriggered && phase !== 'complete')) && !reportPayload) {
+    const synthesisStart = Date.now()
     reportPayload = await runGroqSynthesis(sessionId, currentModel)
+    timings.synthesis = Date.now() - synthesisStart
     newPhase = 'complete'
     reportReady = true
+    logger.info('Synthesis completed', { sessionId, durationMs: timings.synthesis })
   }
 
   const finalHistory: MessageParam[] = [
@@ -307,11 +328,22 @@ Make the founder feel the competitive pressure. Be specific, not generic.`
     { role: 'assistant', content: finalReply },
   ]
 
+  const saveStart = Date.now()
   await Promise.all([
     saveBusinessModel(sessionId, currentModel),
     appendHistory(sessionId, finalHistory),
     setSessionPhase(sessionId, newPhase),
   ])
+  timings.save = Date.now() - saveStart
+
+  const totalTime = Date.now() - turnStartTime
+  logger.info('Agent turn completed', {
+    sessionId,
+    totalMs: totalTime,
+    breakdown: timings,
+    reportReady,
+    groqCallCount,
+  })
 
   return {
     reply: finalReply || "Tell me more.",
@@ -476,4 +508,19 @@ function computeReadinessScore(model: BusinessModel): number {
   if (model.workflow.lead_source.includes('WhatsApp')) score += 1
   if ((model.identity.team_size ?? 0) >= 5) score += 1
   return Math.min(10, score)
+}
+
+export async function runAgentTurn(
+  sessionId: string,
+  userMessage: string
+): Promise<AgentTurnResult> {
+  return Promise.race([
+    runAgentTurnInternal(sessionId, userMessage),
+    new Promise<AgentTurnResult>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Agent turn timeout after ${AGENT_TURN_TIMEOUT_MS}ms`)),
+        AGENT_TURN_TIMEOUT_MS
+      )
+    ),
+  ])
 }
