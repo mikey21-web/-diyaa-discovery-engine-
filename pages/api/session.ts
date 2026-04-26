@@ -30,6 +30,7 @@ export default async function handler(
 
   try {
     const supabase = getServiceClient()
+    logger.info('Session init started', { requestId, hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL, hasKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY })
     const { industry } = req.body || {}
 
     // Map industry key to a human-readable term if provided
@@ -62,8 +63,8 @@ export default async function handler(
       .single()
 
     if (error) {
-      logger.error('Failed to create session', { error: error.message })
-      return res.status(500).json({ error: 'Failed to create session', code: 'DB_ERROR' })
+      logger.error('Failed to create session', { error: error.message, code: error.code, details: (error as any).details })
+      return res.status(500).json({ error: `Failed to create session: ${error.message}`, code: 'DB_ERROR' })
     }
 
     logger.info('Session created', { sessionId: data.id, requestId })
