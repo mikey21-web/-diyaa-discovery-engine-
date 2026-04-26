@@ -34,3 +34,5 @@ next-env.d.ts
 
 # test files with credentials
 test_db.mjs
+
+.vercel
