@@ -59,9 +59,14 @@ export default async function handler(
       reportId = report?.id
     }
 
+    const phaseMap: Record<string, number> = {
+      diagnostic: 1, quantifying: 2, competitor_xray: 3,
+      synthesis: 4, sales: 5, complete: 6,
+    }
+
     return res.status(200).json({
       reply: result.reply,
-      phase: 1, // v2 uses agent_phase string; legacy field kept for UI compat
+      phase: phaseMap[result.phase] ?? 1,
       report_ready: result.report_ready,
       report_id: reportId,
     })

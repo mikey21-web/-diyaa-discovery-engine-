@@ -99,6 +99,14 @@ function WorkflowSVG({ nodes, mode }: { nodes: DigitalTwinNode[]; mode: 'today' 
       style={{ maxHeight: 480 }}
       xmlns="http://www.w3.org/2000/svg"
     >
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#6b7280" />
+        </marker>
+        <marker id="arrow-green" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#059669" />
+        </marker>
+      </defs>
       {nodes.map((node, i) => {
         const col = i % cols
         const row = Math.floor(i / cols)
@@ -128,7 +136,7 @@ function WorkflowSVG({ nodes, mode }: { nodes: DigitalTwinNode[]; mode: 'today' 
               <Arrow
                 x1={x + nodeW / 2}
                 y1={y + nodeH}
-                x2={20 + nodeH / 2}
+                x2={20 + nodeW / 2}
                 y2={y + nodeH + gapY}
                 color={mode === 'future' ? '#059669' : '#6b7280'}
                 curved
@@ -210,7 +218,7 @@ function Arrow({
     ? `M ${x1} ${y1} C ${x1} ${(y1 + y2) / 2}, ${x2} ${(y1 + y2) / 2}, ${x2} ${y2}`
     : `M ${x1} ${y1} L ${x2} ${y2}`
   return (
-    <path d={d} stroke={color} strokeWidth={1.5} fill="none" markerEnd="url(#arrow)" />
+    <path d={d} stroke={color} strokeWidth={1.5} fill="none" markerEnd={color === '#059669' ? 'url(#arrow-green)' : 'url(#arrow)'} />
   )
 }
 

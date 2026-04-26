@@ -184,7 +184,7 @@ const ChatPage: React.FC = () => {
     } catch (err) {
       setMessages(prev => [
         ...prev,
-        { id: safeId(), role: 'assistant', content: 'Connection issue. Please check your Groq API key in Vercel.' },
+        { id: safeId(), role: 'assistant', content: 'Connection issue. Please try again in a moment.' },
       ])
     }
 
@@ -220,7 +220,7 @@ const ChatPage: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-warm-bg font-sans text-charcoal">
       <Head>
-        <title>Discovery Session | Diyaa from diyaa.ai</title>
+        <title>Discovery Session | Arya from diyaa.ai</title>
       </Head>
 
       {/* Header */}
@@ -250,7 +250,7 @@ const ChatPage: React.FC = () => {
               <div className="w-5 h-5 bg-charcoal rounded-full flex items-center justify-center">
                 <span className="text-amber text-[9px] font-bold">D</span>
               </div>
-              <span className="text-xs font-medium text-warm-muted">Diyaa from diyaa.ai</span>
+              <span className="text-xs font-medium text-warm-muted">Arya from diyaa.ai</span>
             </div>
           </div>
 
@@ -284,7 +284,7 @@ const ChatPage: React.FC = () => {
                   <span className="w-1.5 h-1.5 bg-amber rounded-full animate-pulse-soft [animation-delay:0.2s]" />
                   <span className="w-1.5 h-1.5 bg-amber rounded-full animate-pulse-soft [animation-delay:0.4s]" />
                 </div>
-                <span className="text-[11px] text-warm-muted font-medium ml-1">Diyaa is thinking</span>
+                <span className="text-[11px] text-warm-muted font-medium ml-1">Arya is thinking</span>
               </div>
             </motion.div>
           )}
@@ -438,7 +438,7 @@ const ChatPage: React.FC = () => {
                 )}
               </button>
               <p className="text-[10px] text-warm-muted text-center mt-3">
-                We will never share your info. This is between you and Diyaa.
+                We will never share your info. This is between you and Arya.
               </p>
             </motion.div>
           </motion.div>
