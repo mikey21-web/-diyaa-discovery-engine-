@@ -59,10 +59,10 @@ export default async function handler(
     const { error: insertError } = await supabase.from('leads').insert({
       session_id,
       name,
-      email: email || null,
+      email: email || undefined,
       whatsapp: normalizeWhatsapp(whatsapp),
-      industry: extractedData?.industry || null,
-      city: extractedData?.city || null,
+      industry: extractedData?.industry || undefined,
+      city: extractedData?.city || undefined,
       report_url: reportUrl,
       status: 'new',
     })
@@ -80,11 +80,11 @@ export default async function handler(
     try {
       await sendLeadEmail({
         name,
-        email: email || null,
+        email: email || undefined,
         whatsapp: normalizedWhatsapp,
-        industry: extractedData?.industry || null,
+        industry: extractedData?.industry || undefined,
         report_url: reportUrl,
-        ai_readiness_score: extractedData?.ai_readiness_score ?? null,
+        ai_readiness_score: extractedData?.ai_readiness_score ?? undefined,
       })
     } catch (emailErr) {
       logger.warn('Email send failed, but lead was captured', { requestId, error: (emailErr as Error).message })
