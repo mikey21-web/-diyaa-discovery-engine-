@@ -25,9 +25,9 @@ export async function executeTool(toolName: string, input: Record<string, unknow
   switch (toolName) {
     case 'calculator': {
       const result = calculateLeak({
-        description: inp.description as string,
-        frequency_per_week: inp.frequency_per_week as number,
-        cost_per_instance_inr: inp.cost_per_instance_inr as number,
+        description: String(inp.description),
+        frequency_per_week: Number(inp.frequency_per_week),
+        cost_per_instance_inr: Number(inp.cost_per_instance_inr),
       })
       return {
         tool_name: toolName,
