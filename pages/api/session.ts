@@ -44,7 +44,7 @@ export default async function handler(
 
     const industryMention = industry && industryMap[industry] ? ` your ${industryMap[industry]} ` : ' your '
 
-    const OPENING_MESSAGE = `Hey there 👋 I'm Diyaa from diyaa.ai. In the next 10 minutes, I'll show you exactly where AI can save${industryMention}business time, money, and lost revenue. Let's start with your operations — tell me a bit about how you currently interact with your customers today?`
+    const OPENING_MESSAGE = `Hey 👋 I'm Diyaa from diyaa.ai.\n\nHow do you handle${industryMention}customers right now?`
 
     const { data, error } = await supabase
       .from('sessions')
