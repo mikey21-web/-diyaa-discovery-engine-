@@ -20,14 +20,24 @@ export interface ToolResult {
   model_patch?: Partial<BusinessModel>
 }
 
+function parseNumeric(val: unknown): number {
+  if (typeof val === 'number') return val
+  const str = String(val).trim()
+  if (str.includes('-')) {
+    const [a, b] = str.split('-').map(Number)
+    return Math.round((a + b) / 2)
+  }
+  return Number(str) || 0
+}
+
 export async function executeTool(toolName: string, input: Record<string, unknown>, currentModel: BusinessModel): Promise<ToolResult> {
   const inp = input as Record<string, any>
   switch (toolName) {
     case 'calculator': {
       const result = calculateLeak({
         description: String(inp.description),
-        frequency_per_week: Number(inp.frequency_per_week),
-        cost_per_instance_inr: Number(inp.cost_per_instance_inr),
+        frequency_per_week: parseNumeric(inp.frequency_per_week),
+        cost_per_instance_inr: parseNumeric(inp.cost_per_instance_inr),
       })
       return {
         tool_name: toolName,
