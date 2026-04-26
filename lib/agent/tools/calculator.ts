@@ -50,12 +50,12 @@ export const calculatorToolSchema: Tool = {
         description: 'Plain English description of the leak (e.g. "Slow lead response losing deals")',
       },
       frequency_per_week: {
-        type: 'number',
-        description: 'How many times per week this problem causes a loss',
+        type: 'string',
+        description: 'How many times per week this problem causes a loss. Must be a numeric value e.g. "3"',
       },
       cost_per_instance_inr: {
-        type: 'number',
-        description: 'Cost in INR each time this problem occurs (commission lost, wasted hours * hourly rate, etc.)',
+        type: 'string',
+        description: 'Cost in INR each time this problem occurs e.g. "750000"',
       },
     },
     required: ['description', 'frequency_per_week', 'cost_per_instance_inr'],
