@@ -184,14 +184,17 @@ async function runAgentTurnInternal(
         content: content,
       })
 
-      // Check for report signals
-      if (content.includes('[REPORT_READY]')) {
+      // Check for report signals — match with or without brackets
+      const hasReportReady = content.includes('[REPORT_READY]') || /\bREPORT_READY\b/.test(content)
+      const hasSalesPhase = content.includes('[SALES_PHASE]') || /\bSALES_PHASE\b/.test(content)
+
+      if (hasReportReady) {
         reportReady = true
-        finalReply = content.replace('[REPORT_READY]', '').trim()
+        finalReply = content.replace(/\[?REPORT_READY\]?/g, '').trim()
         break
-      } else if (content.includes('[SALES_PHASE]')) {
+      } else if (hasSalesPhase) {
         salesPhaseTriggered = true
-        finalReply = content.replace('[SALES_PHASE]', '').trim()
+        finalReply = content.replace(/\[?SALES_PHASE\]?/g, '').trim()
         break
       }
 

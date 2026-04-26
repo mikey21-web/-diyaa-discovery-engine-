@@ -103,7 +103,8 @@ const ChatPage: React.FC = () => {
           },
         ])
       } else {
-        setMessages(prev => [...prev, { id: safeId(), role: 'assistant', content: data.reply }])
+        const cleanReply = (data.reply as string || '').replace(/\[?SALES_PHASE\]?/g, '').replace(/\[?REPORT_READY\]?/g, '').trim()
+      setMessages(prev => [...prev, { id: safeId(), role: 'assistant', content: cleanReply }])
         setPhase(data.phase)
       }
     } catch {
