@@ -6,6 +6,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServiceClient } from '@/lib/supabase'
 import { logger } from '@/lib/logger'
+import { seedBusinessModel } from '@/lib/agent/businessModel'
 // import { rateLimit, getIP } from '@/lib/rateLimit'
 import type { CreateSessionResponse, ApiError } from '@/lib/types'
 
@@ -72,6 +73,10 @@ export default async function handler(
     if (error) {
       logger.error('Failed to create session', { error: error.message, code: error.code, details: (error as any).details })
       return res.status(500).json({ error: `Failed to create session: ${error.message}`, code: 'DB_ERROR' })
+    }
+
+    if (industry) {
+      await seedBusinessModel(data.id, industry).catch(() => {})
     }
 
     logger.info('Session created', { sessionId: data.id, requestId })

@@ -180,8 +180,8 @@ export interface ReportResponse {
 export interface LeadRequest {
   session_id: string
   name: string
-  email?: string
-  whatsapp: string
+  email: string
+  whatsapp?: string
 }
 
 export interface LeadResponse {

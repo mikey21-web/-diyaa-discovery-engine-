@@ -63,6 +63,17 @@ export function mergeModel(base: BusinessModel, patch: Partial<BusinessModel>): 
   return merged
 }
 
+export async function seedBusinessModel(sessionId: string, industry: string): Promise<void> {
+  const supabase = getServiceClient()
+  const model = structuredClone(EMPTY_BUSINESS_MODEL)
+  model.identity.industry = industry
+  model.completeness_score = scoreCompleteness(model)
+  await supabase.from('business_models').upsert(
+    { session_id: sessionId, model, completeness_score: model.completeness_score, updated_at: new Date().toISOString() },
+    { onConflict: 'session_id' }
+  )
+}
+
 export function scoreCompleteness(model: BusinessModel): number {
   let score = 0
 

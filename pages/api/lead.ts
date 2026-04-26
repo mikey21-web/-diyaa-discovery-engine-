@@ -31,16 +31,16 @@ export default async function handler(
 
   const { session_id, name, email, whatsapp } = req.body as LeadRequest
 
-  if (!session_id || !name || !whatsapp) {
-    return res.status(400).json({ error: 'Name and WhatsApp are required.', code: 'INVALID_INPUT' })
+  if (!session_id || !name || !email) {
+    return res.status(400).json({ error: 'Name and email are required.', code: 'INVALID_INPUT' })
   }
 
-  if (!isValidWhatsapp(whatsapp)) {
-    return res.status(400).json({ error: 'Enter a valid WhatsApp number.', code: 'INVALID_INPUT' })
-  }
-
-  if (email && !email.includes('@')) {
+  if (!email.includes('@')) {
     return res.status(400).json({ error: 'Enter a valid email address.', code: 'INVALID_INPUT' })
+  }
+
+  if (whatsapp && !isValidWhatsapp(whatsapp)) {
+    return res.status(400).json({ error: 'Enter a valid WhatsApp number.', code: 'INVALID_INPUT' })
   }
 
   try {
@@ -56,11 +56,13 @@ export default async function handler(
     const reportUrl = reportRes.data?.share_url || null;
 
     // 2. Atomic Lead Insert (DB unique constraint prevents duplicates even under race conditions)
+    const normalizedWhatsapp = whatsapp ? normalizeWhatsapp(whatsapp) : undefined
+
     const { error: insertError } = await supabase.from('leads').insert({
       session_id,
       name,
-      email: email || undefined,
-      whatsapp: normalizeWhatsapp(whatsapp),
+      email,
+      whatsapp: normalizedWhatsapp,
       industry: extractedData?.industry || undefined,
       city: extractedData?.city || undefined,
       report_url: reportUrl,
@@ -76,11 +78,10 @@ export default async function handler(
     await supabase.from('sessions').update({ lead_captured: true }).eq('id', session_id)
 
     // 4. Send email notification directly
-    const normalizedWhatsapp = normalizeWhatsapp(whatsapp)
     try {
       await sendLeadEmail({
         name,
-        email: email || undefined,
+        email,
         whatsapp: normalizedWhatsapp,
         industry: extractedData?.industry || undefined,
         report_url: reportUrl,
