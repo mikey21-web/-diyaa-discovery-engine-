@@ -33,7 +33,6 @@ export default async function handler(
     logger.info('Session init started', { requestId, hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL, hasKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY })
     const { industry } = req.body || {}
 
-    // Map industry key to a human-readable term if provided
     const industryMap: Record<string, string> = {
       real_estate: 'real estate',
       hospitality: 'hotel & hospitality',
@@ -42,9 +41,7 @@ export default async function handler(
       d2c_fashion: 'D2C fashion',
     }
 
-    const industryMention = industry && industryMap[industry] ? ` your ${industryMap[industry]} ` : ' your '
-
-    const OPENING_MESSAGE = `Hey 👋 I'm Diyaa from diyaa.ai.\n\nHow do you handle${industryMention}customers right now?`
+    const OPENING_MESSAGE = `Hey 👋 I'm Diyaa.\n\nWhat's your business?`
 
     const { data, error } = await supabase
       .from('sessions')
