@@ -98,5 +98,5 @@ export function scoreCompleteness(model: BusinessModel): number {
 }
 
 function dedup(arr: string[]): string[] {
-  return [...new Set(arr.filter(Boolean))]
+  return Array.from(new Set(arr.filter(Boolean)))
 }

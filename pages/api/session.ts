@@ -31,17 +31,20 @@ export default async function handler(
   try {
     const supabase = getServiceClient()
 
+    const OPENING_MESSAGE = "Hey, I'm Arya from diyaa.ai. Tell me about your business — what do you do and who do you do it for?"
+
     const { data, error } = await supabase
       .from('sessions')
       .insert({
         status: 'active',
         phase: 1,
+        agent_phase: 'diagnostic',
         conversation_history: [
           {
             role: 'assistant',
-            content: "Hey, I'm Diyaa \u{1F44B}\n\nTell me what you do — and I'll tell you what's broken before you finish explaining.",
-            timestamp: new Date().toISOString()
-          }
+            content: OPENING_MESSAGE,
+            timestamp: new Date().toISOString(),
+          },
         ],
         extracted_data: null,
         ai_readiness_score: null,
@@ -59,7 +62,7 @@ export default async function handler(
     return res.status(201).json({
       session_id: data.id,
       created_at: data.created_at,
-      opening_message: "Hey, I'm Diyaa 👋\n\nTell me what you do — and I'll tell you what's broken before you finish explaining.",
+      opening_message: OPENING_MESSAGE,
     })
   } catch (err) {
     const error = err as Error

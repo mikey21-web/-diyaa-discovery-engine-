@@ -1,19 +1,11 @@
-// ========================================
-// diyaa.ai — POST /api/chat
-// Handles one conversation turn.
-// Manages history, detects [REPORT_READY].
-// ========================================
-
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServiceClient } from '@/lib/supabase'
-import { getClaudeResponse, UpstreamBusyError } from '@/lib/claude'
+import { runAgentTurn } from '@/lib/agent/orchestrator'
+import { AnthropicBusyError } from '@/lib/anthropic'
 import { logger } from '@/lib/logger'
-import type { ChatRequest, ChatResponse, ApiError, ConversationMessage } from '@/lib/types'
-import { compactConversationHistory } from '@/lib/chatContext'
+import type { ChatResponse, ApiError } from '@/lib/types'
 import { processDueJobs } from '@/lib/jobs'
-
 import { rateLimit, getIP } from '@/lib/rateLimit'
-import { getBaseUrl } from '@/lib/utils'
 
 export default async function handler(
   req: NextApiRequest,
@@ -32,7 +24,7 @@ export default async function handler(
     return res.status(429).json({ error: 'Too many messages. Please wait 1 minute.', code: 'RATE_LIMIT_EXCEEDED' })
   }
 
-  const { session_id, message } = req.body as ChatRequest
+  const { session_id, message } = req.body as { session_id: string; message: string }
 
   if (!session_id || typeof session_id !== 'string' || !message || message.length > 2000) {
     return res.status(400).json({ error: 'Invalid message or session_id', code: 'BAD_REQUEST' })
@@ -43,7 +35,7 @@ export default async function handler(
 
     const { data: session, error: fetchError } = await supabase
       .from('sessions')
-      .select('conversation_history, phase, status')
+      .select('status')
       .eq('id', session_id)
       .single()
 
@@ -51,81 +43,40 @@ export default async function handler(
       return res.status(404).json({ error: 'Session not found', code: 'NOT_FOUND' })
     }
 
-    if (session.status !== 'active') {
-      return res.status(410).json({ error: 'Session expired/complete', code: 'SESSION_CLOSED' })
+    if (session.status === 'report_generated') {
+      return res.status(410).json({ error: 'Session complete', code: 'SESSION_CLOSED' })
     }
 
-    const history: ConversationMessage[] = session.conversation_history || []
-    history.push({
-      role: 'user',
-      content: message,
-      timestamp: new Date().toISOString(),
-    })
-
-    const claudeMessages = compactConversationHistory(history)
-
-    const claudeResponse = await getClaudeResponse(claudeMessages, session.phase)
-
-    history.push({
-      role: 'assistant',
-      content: claudeResponse.content,
-      timestamp: new Date().toISOString(),
-    })
+    const result = await runAgentTurn(session_id, message)
 
     let reportId: string | undefined
-
-    // ATOMIC PREPARATION
-    const isReportReady = Boolean(claudeResponse.reportReady && claudeResponse.extractedData)
-    const finalStatus = isReportReady ? 'report_generated' : 'active'
-
-    const { error: updateError } = await supabase
-      .from('sessions')
-      .update({
-        conversation_history: history,
-        phase: claudeResponse.phase,
-        status: finalStatus,
-        extracted_data: isReportReady ? claudeResponse.extractedData : null,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', session_id)
-      .eq('status', 'active'); // ATOMIC LOCK
-
-    if (updateError) {
-      throw new Error('Atomic update failed - likely race condition');
-    }
-
-    if (isReportReady) {
+    if (result.report_ready) {
       const { data: report } = await supabase
         .from('reports')
-        .upsert({
-          session_id: session_id,
-          share_url: `${getBaseUrl()}/report/${session_id}`,
-        }, { onConflict: 'session_id' })
         .select('id')
+        .eq('session_id', session_id)
         .single()
-      
       reportId = report?.id
     }
 
     return res.status(200).json({
-      reply: claudeResponse.content,
-      phase: claudeResponse.phase,
-      report_ready: isReportReady,
+      reply: result.reply,
+      phase: 1, // v2 uses agent_phase string; legacy field kept for UI compat
+      report_ready: result.report_ready,
       report_id: reportId,
     })
   } catch (err) {
-    if (err instanceof UpstreamBusyError) {
-      return res.status(503).json({ error: err.message, code: 'UPSTREAM_BUSY' })
+    if (err instanceof AnthropicBusyError) {
+      return res.status(503).json({ error: 'AI is busy — please try again in a moment.', code: 'UPSTREAM_BUSY' })
     }
-
     const error = err as Error
     logger.error('Chat error', { msg: error.message, requestId })
     return res.status(500).json({ error: 'Service Unavailable', code: 'INTERNAL_ERROR' })
   } finally {
     processDueJobs(5).catch((err: unknown) => {
-      const error = err as Error
-      logger.warn('Background job drain failed from chat', { requestId, message: error.message })
+      const e = err as Error
+      logger.warn('Background job drain failed', { requestId, message: e.message })
     })
-    logger.info('Chat request completed', { requestId, durationMs: Date.now() - startedAt })
+    logger.info('Chat completed', { requestId, durationMs: Date.now() - startedAt })
   }
 }

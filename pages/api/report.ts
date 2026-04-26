@@ -1,40 +1,26 @@
-// ========================================
-// diyaa.ai — POST /api/report
-// Returns report data for a session.
-// ========================================
-
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServiceClient } from '@/lib/supabase'
 import { logger } from '@/lib/logger'
-import { getBenchmarksForVertical } from '@/lib/benchmarks'
-import { getScoreInterpretation } from '@/lib/scoring'
 import { getBaseUrl } from '@/lib/utils'
-import type { ApiError, ExtractedData, VerticalKey } from '@/lib/types'
+import type { ApiError } from '@/lib/types'
+import type { ReportPayload } from '@/lib/agent/types'
 
-interface ReportData {
+interface ReportResponse {
   report_id: string
   report_url: string
-  business_name: string
-  industry: string
-  extracted_data: ExtractedData
-  benchmarks: Record<string, unknown>
-  readiness: {
-    score: number
-    tier: string
-    description: string
-  }
+  payload: ReportPayload
 }
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<ReportData | ApiError>
+  res: NextApiResponse<ReportResponse | ApiError>
 ) {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' })
   }
 
   const sessionId =
-    req.method === 'POST' ? req.body.session_id : (req.query.session_id as string)
+    req.method === 'POST' ? (req.body.session_id as string) : (req.query.session_id as string)
 
   if (!sessionId) {
     return res.status(400).json({ error: 'Missing session_id', code: 'BAD_REQUEST' })
@@ -43,10 +29,9 @@ export default async function handler(
   try {
     const supabase = getServiceClient()
 
-    // Fetch session
     const { data: session, error: sessionError } = await supabase
       .from('sessions')
-      .select('*')
+      .select('extracted_data, ai_readiness_score')
       .eq('id', sessionId)
       .single()
 
@@ -55,41 +40,31 @@ export default async function handler(
     }
 
     if (!session.extracted_data) {
-      return res.status(400).json({
-        error: 'Report not yet generated for this session',
-        code: 'REPORT_NOT_READY',
-      })
+      return res.status(400).json({ error: 'Report not yet generated', code: 'REPORT_NOT_READY' })
     }
 
-    // Fetch report record
     const { data: report } = await supabase
       .from('reports')
-      .select('*')
+      .select('id')
       .eq('session_id', sessionId)
       .single()
 
-    const extractedData = session.extracted_data as ExtractedData
-    const vertical = (extractedData.industry || 'other') as VerticalKey
-    const benchmarks = getBenchmarksForVertical(vertical)
+    const payload = session.extracted_data as ReportPayload
 
-    // Build a mock session state for scoring
-    const readinessScore = session.ai_readiness_score || extractedData.ai_readiness_score || 0
-    const interpretation = getScoreInterpretation(readinessScore)
+    // Increment view count
+    // Increment view count (non-critical, fire-and-forget)
+    supabase
+      .from('reports')
+      .update({ view_count: 1 })
+      .eq('session_id', sessionId)
+      .then(() => null, () => null)
 
     logger.info('Report fetched', { sessionId, reportId: report?.id })
 
     return res.status(200).json({
-      report_id: report?.id || sessionId,
+      report_id: report?.id ?? sessionId,
       report_url: `${getBaseUrl()}/report/${sessionId}`,
-      business_name: extractedData.business_name || extractedData.business || 'Your Business',
-      industry: extractedData.industry || 'other',
-      extracted_data: extractedData,
-      benchmarks: benchmarks as unknown as Record<string, unknown>,
-      readiness: {
-        score: readinessScore,
-        tier: interpretation.tier,
-        description: interpretation.description,
-      },
+      payload,
     })
   } catch (err) {
     const error = err as Error
