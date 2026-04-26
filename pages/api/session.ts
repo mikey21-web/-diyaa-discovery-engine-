@@ -41,7 +41,17 @@ export default async function handler(
       d2c_fashion: 'D2C fashion',
     }
 
-    const OPENING_MESSAGE = `Hey 👋 I'm Diyaa.\n\nWhat's your business?`
+    const industryOpenings: Record<string, string> = {
+      real_estate: `Real estate in India moves fast — leads go cold in under an hour if you don't respond. Walk me through what happens the moment a new inquiry hits you.`,
+      hospitality: `In hospitality, the biggest revenue drain is usually no-shows and guests who never come back. What's your biggest operational headache right now?`,
+      fnb: `FnB lives or dies on repeat customers and table turns. What part of your day-to-day still feels like it's on you personally to manage?`,
+      coaching: `Coaches lose 30-40% of booked calls to no-shows — it's the silent killer. How does your current booking and follow-up process work?`,
+      d2c_fashion: `D2C fashion — 90% of mobile carts get abandoned before checkout. What's your current recovery process look like when someone drops off?`,
+    }
+
+    const OPENING_MESSAGE = industry && industryOpenings[industry]
+      ? `Hey, I'm Diyaa from diyaa.ai.\n\n${industryOpenings[industry]}`
+      : `Hey, I'm Diyaa from diyaa.ai.\n\nBefore I ask you anything — what's the one part of your business that's costing you the most time or deals right now?`
 
     const { data, error } = await supabase
       .from('sessions')
