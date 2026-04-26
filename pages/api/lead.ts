@@ -6,7 +6,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServiceClient } from '@/lib/supabase'
 import { logger } from '@/lib/logger'
-import { enqueueJob } from '@/lib/jobs'
+import { sendLeadEmail } from '@/lib/email'
 import type { LeadRequest, LeadResponse, ApiError, ExtractedData } from '@/lib/types'
 
 function normalizeWhatsapp(input: string): string {
@@ -65,7 +65,6 @@ export default async function handler(
       city: extractedData?.city || null,
       report_url: reportUrl,
       status: 'new',
-      email_failed: false
     })
 
     // If lead already exists (UNIQUE constraint violation), that's OK — it was a retry
@@ -76,29 +75,20 @@ export default async function handler(
     // 3. Mark session complete
     await supabase.from('sessions').update({ lead_captured: true }).eq('id', session_id)
 
-    // 4. Queue async side effects for reliable retries
+    // 4. Send email notification directly
     const normalizedWhatsapp = normalizeWhatsapp(whatsapp)
-
-    await enqueueJob('lead_webhook', {
-      session_id,
-      name,
-      email: email || null,
-      whatsapp: normalizedWhatsapp,
-      industry: extractedData?.industry || null,
-      city: extractedData?.city || null,
-      report_url: reportUrl,
-      ai_readiness_score: extractedData?.ai_readiness_score ?? null,
-    })
-
-    await enqueueJob('lead_email', {
-      name,
-      email: email || null,
-      whatsapp: normalizedWhatsapp,
-      industry: extractedData?.industry || null,
-      report_url: reportUrl,
-      ai_readiness_score: extractedData?.ai_readiness_score ?? null,
-      session_id,
-    })
+    try {
+      await sendLeadEmail({
+        name,
+        email: email || null,
+        whatsapp: normalizedWhatsapp,
+        industry: extractedData?.industry || null,
+        report_url: reportUrl,
+        ai_readiness_score: extractedData?.ai_readiness_score ?? null,
+      })
+    } catch (emailErr) {
+      logger.warn('Email send failed, but lead was captured', { requestId, error: (emailErr as Error).message })
+    }
 
     return res.status(200).json({ success: true, report_id: reportRes.data?.id || session_id } as any)
   } catch (err) {
