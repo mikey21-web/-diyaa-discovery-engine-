@@ -31,11 +31,32 @@ const createTransporter = () => {
   })
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 export async function sendLeadEmail(leadData: LeadEmailData) {
   const transporter = createTransporter()
   const { ADMIN_EMAIL } = process.env
 
-  if (!transporter || !ADMIN_EMAIL) return
+  if (!transporter) {
+    throw new Error('Gmail credentials missing (GMAIL_USER/GMAIL_APP_PASSWORD)')
+  }
+
+  if (!ADMIN_EMAIL) {
+    throw new Error('ADMIN_EMAIL missing')
+  }
+
+  const safeName = escapeHtml(leadData.name)
+  const safeEmail = escapeHtml(leadData.email || 'N/A')
+  const safeWhatsapp = escapeHtml(leadData.whatsapp || 'N/A')
+  const safeIndustry = escapeHtml(leadData.industry || 'Unknown')
+  const safeReportUrl = escapeHtml(leadData.report_url || '')
 
   try {
     // 1. Alert for you (Admin)
@@ -45,13 +66,13 @@ export async function sendLeadEmail(leadData: LeadEmailData) {
       subject: `🚨 New AI Lead: ${leadData.name}`,
       html: `
         <h2>New Discovery Session Completed!</h2>
-        <p><strong>Name:</strong> ${leadData.name}</p>
-        <p><strong>Email:</strong> ${leadData.email || 'N/A'}</p>
-        <p><strong>WhatsApp:</strong> ${leadData.whatsapp || 'N/A'}</p>
-        <p><strong>Industry:</strong> ${leadData.industry || 'Unknown'}</p>
+        <p><strong>Name:</strong> ${safeName}</p>
+        <p><strong>Email:</strong> ${safeEmail}</p>
+        <p><strong>WhatsApp:</strong> ${safeWhatsapp}</p>
+        <p><strong>Industry:</strong> ${safeIndustry}</p>
         <p><strong>AI Readiness Score:</strong> ${leadData.ai_readiness_score || 'N/A'} / 10</p>
         <br />
-        <p><strong>View Full Report:</strong> <a href="${leadData.report_url}">${leadData.report_url}</a></p>
+        <p><strong>View Full Report:</strong> <a href="${safeReportUrl}">${safeReportUrl}</a></p>
       `,
     })
     logger.info('Admin email sent for new lead via Gmail.')
@@ -64,10 +85,10 @@ export async function sendLeadEmail(leadData: LeadEmailData) {
         subject: `Your AI Implementation Roadmap is Ready`,
         replyTo: process.env.GMAIL_USER,
         html: `
-          <h3>Hi ${leadData.name},</h3>
+          <h3>Hi ${safeName},</h3>
           <p>Thank you for completing the discovery session.</p>
           <p>Your custom AI Implementation Roadmap has been generated based on our conversation. You can access it securely here:</p>
-          <p><a href="${leadData.report_url}">${leadData.report_url}</a></p>
+          <p><a href="${safeReportUrl}">${safeReportUrl}</a></p>
           <br />
           <p>If you have any questions or want to proceed with execution, feel free to reply directly to this email.</p>
           <p>Best regards,<br/>Diyaa<br/>diyaa.ai</p>
@@ -77,6 +98,7 @@ export async function sendLeadEmail(leadData: LeadEmailData) {
     }
   } catch (error) {
     logger.error('Gmail email dispatch failed', { error })
+    throw error // Re-throw so job dispatcher handles retries
   }
 }
 
@@ -89,7 +111,15 @@ export async function sendErrorAlert(errorDetails: {
   const transporter = createTransporter()
   const { ADMIN_EMAIL } = process.env
 
-  if (!transporter || !ADMIN_EMAIL) return
+  if (!transporter) {
+    throw new Error('Gmail credentials missing (GMAIL_USER/GMAIL_APP_PASSWORD)')
+  }
+
+  if (!ADMIN_EMAIL) {
+    throw new Error('ADMIN_EMAIL missing')
+  }
+
+  const safeError = escapeHtml(errorDetails.error)
 
   try {
     await transporter.sendMail({
@@ -98,7 +128,7 @@ export async function sendErrorAlert(errorDetails: {
       subject: `🚨 CRITICAL: Groq API Error - ${errorDetails.allKeysExhausted ? 'ALL KEYS EXHAUSTED' : 'Key Failed'}`,
       html: `
         <h2>Groq API Issue Detected</h2>
-        <p><strong>Error:</strong> ${errorDetails.error}</p>
+        <p><strong>Error:</strong> ${safeError}</p>
         <p><strong>Status:</strong> ${errorDetails.status || 'N/A'}</p>
         <p><strong>Key Index:</strong> ${errorDetails.keyIndex}</p>
         <p><strong>Recovery:</strong> ${errorDetails.allKeysExhausted ? 'System is DOWN for chat.' : 'Falling back to next key.'}</p>
@@ -109,5 +139,6 @@ export async function sendErrorAlert(errorDetails: {
     logger.info('Error alert email sent via Gmail.')
   } catch (error) {
     logger.error('Failed to send error alert email via Gmail', { error })
+    throw error
   }
 }

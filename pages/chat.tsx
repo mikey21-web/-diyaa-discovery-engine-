@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, ChevronLeft, Loader2, Shield, ArrowRight } from 'lucide-react'
 
@@ -17,6 +18,8 @@ interface LeadFormData {
 }
 
 const ChatPage: React.FC = () => {
+  const router = useRouter()
+  const { industry } = router.query
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [sessionLoading, setSessionLoading] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
@@ -25,21 +28,106 @@ const ChatPage: React.FC = () => {
   const [initFailed, setInitFailed] = useState(false)
   const [phase, setPhase] = useState(1)
   const [reportReady, setReportReady] = useState(false)
+  const [reportId, setReportId] = useState<string | null>(null)
   const [showLeadForm, setShowLeadForm] = useState(false)
   const [leadForm, setLeadForm] = useState<LeadFormData>({ name: '', email: '', whatsapp: '+91' })
   const [leadSubmitting, setLeadSubmitting] = useState(false)
   const [leadSubmitted, setLeadSubmitted] = useState(false)
+  const [seedSent, setSeedSent] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const safeId = () => Math.random().toString(36).substring(2, 15)
 
+  const getSeedMessage = useCallback((): string | null => {
+    const industryKey = typeof industry === 'string' ? industry : null
+    if (!industryKey) return null
+
+    const labelMap: Record<string, string> = {
+      real_estate: 'real estate',
+      hospitality: 'hospitality',
+      d2c_fashion: 'fashion D2C',
+      coaching: 'coaching',
+      fnb: 'F&B',
+      healthcare: 'healthcare',
+      logistics: 'logistics',
+      retail: 'retail',
+    }
+
+    const label = labelMap[industryKey] ?? industryKey.replace(/_/g, ' ')
+    return `I run a ${label} business and want to audit where AI can help us first.`
+  }, [industry])
+
+  const sendMessage = useCallback(async (userMessage: string, activeSessionId: string) => {
+    setMessages(prev => [...prev, { id: safeId(), role: 'user', content: userMessage }])
+    setIsLoading(true)
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: activeSessionId, message: userMessage }),
+      })
+
+      const data = await res.json()
+
+      if (data.report_id) {
+        setReportId(data.report_id)
+      }
+
+      if (data.report_ready) {
+        setReportReady(true)
+        setPhase(6)
+        const reply = data.reply || "Got it. I'm analyzing your data and building your implementation roadmap right now..."
+        setMessages(prev => [
+          ...prev,
+          {
+            id: safeId(),
+            role: 'assistant',
+            content: reply,
+          },
+        ])
+        setIsLoading(false)
+        setTimeout(() => setShowLeadForm(true), 1500)
+        return
+      }
+
+      if (data.error) {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: safeId(),
+            role: 'assistant',
+            content: data.code === 'UPSTREAM_BUSY'
+              ? 'Server is busy right now due to high traffic. Please try again in about 30 seconds.'
+              : `Error: ${data.error}. Please try again.`,
+          },
+        ])
+      } else {
+        setMessages(prev => [...prev, { id: safeId(), role: 'assistant', content: data.reply }])
+        setPhase(data.phase)
+      }
+    } catch {
+      setMessages(prev => [
+        ...prev,
+        { id: safeId(), role: 'assistant', content: 'Connection issue. Please try again in a moment.' },
+      ])
+    }
+
+    setIsLoading(false)
+  }, [])
+
   const initSession = useCallback(async (): Promise<string | null> => {
-    if (sessionLoading || sessionId) return sessionId
+    if (sessionLoading || sessionId || !router.isReady) return sessionId
 
     setSessionLoading(true)
     setInitFailed(false)
     try {
-      const res = await fetch('/api/session', { method: 'POST' })
+      const industryToSend = typeof industry === 'string' ? industry : undefined
+      const res = await fetch('/api/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ industry: industryToSend })
+      })
       const data = await res.json() as { session_id?: string; opening_message?: string; error?: string; code?: string }
 
       if (!res.ok || data.error) {
@@ -79,14 +167,14 @@ const ChatPage: React.FC = () => {
       setSessionLoading(false)
       return null
     }
-  }, [sessionLoading])
+  }, [sessionLoading, sessionId, router.isReady, industry])
 
   // Create session on mount
   useEffect(() => {
-    if (!sessionId) {
+    if (!sessionId && router.isReady) {
       initSession()
     }
-  }, [])
+  }, [router.isReady, sessionId, initSession])
 
   // Auto-scroll
   useEffect(() => {
@@ -101,6 +189,18 @@ const ChatPage: React.FC = () => {
       inputRef.current.focus()
     }
   }, [isLoading])
+
+  useEffect(() => {
+    const seedMessage = getSeedMessage()
+    if (!sessionId || !seedMessage || seedSent || messages.length !== 1 || isLoading) return
+
+    setSeedSent(true)
+    // Small delay to show typing indicator and make interaction feel natural
+    const timer = setTimeout(() => {
+      void sendMessage(seedMessage, sessionId)
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [getSeedMessage, isLoading, messages.length, seedSent, sendMessage, sessionId])
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return
@@ -128,67 +228,7 @@ const ChatPage: React.FC = () => {
     if (inputRef.current) {
       inputRef.current.style.height = 'auto'
     }
-    setMessages(prev => [...prev, { id: safeId(), role: 'user', content: userMessage }])
-    setIsLoading(true)
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: activeSessionId, message: userMessage }),
-      })
-
-      const data = await res.json()
-
-      if (data.report_ready) {
-        setReportReady(true)
-        setPhase(6)
-        // Ensure there's always a concluding message if AI just sends JSON
-        const reply = data.reply || "Got it. I'm analyzing your data and building your implementation roadmap right now..."
-        setMessages(prev => [
-          ...prev,
-          {
-            id: safeId(),
-            role: 'assistant',
-            content: reply,
-          },
-        ])
-        setIsLoading(false)
-        
-        // Auto-show lead form after a short delay
-        setTimeout(() => setShowLeadForm(true), 1500)
-        return
-      }
-
-      if (data.error) {
-        setMessages(prev => [
-          ...prev,
-          {
-            id: safeId(),
-            role: 'assistant',
-            content: data.code === 'UPSTREAM_BUSY'
-              ? 'Server is busy right now due to high traffic. Please try again in about 30 seconds.'
-              : `Error: ${data.error}. Please try again.`,
-          },
-        ])
-      } else {
-        setMessages(prev => [...prev, { id: safeId(), role: 'assistant', content: data.reply }])
-        setPhase(data.phase)
-
-        if (data.report_ready) {
-          setReportReady(true)
-          // Show lead form after a moment
-          setTimeout(() => setShowLeadForm(true), 2000)
-        }
-      }
-    } catch (err) {
-      setMessages(prev => [
-        ...prev,
-        { id: safeId(), role: 'assistant', content: 'Connection issue. Please try again in a moment.' },
-      ])
-    }
-
-    setIsLoading(false)
+    await sendMessage(userMessage, activeSessionId)
   }
 
   const handleLeadSubmit = async () => {
@@ -198,7 +238,7 @@ const ChatPage: React.FC = () => {
     setLeadSubmitting(true)
 
     try {
-      await fetch('/api/lead', {
+      const res = await fetch('/api/lead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -208,10 +248,15 @@ const ChatPage: React.FC = () => {
           whatsapp: leadForm.whatsapp,
         }),
       })
+
+      if (!res.ok) {
+        throw new Error('Failed to submit lead')
+      }
+      const data = await res.json()
+      setReportId(data.report_id || sessionId)
       setLeadSubmitted(true)
-    } catch (err) {
-      // Still show report even if lead capture fails
-      setLeadSubmitted(true)
+    } catch {
+      alert("Failed to submit details. Please try again.")
     }
 
     setLeadSubmitting(false)
@@ -220,15 +265,17 @@ const ChatPage: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-warm-bg font-sans text-charcoal">
       <Head>
-        <title>Discovery Session | Arya from diyaa.ai</title>
+        <title>Discovery Session | Diyaa from diyaa.ai</title>
       </Head>
 
       {/* Header */}
       <header className="flex items-center justify-between px-5 h-14 bg-warm-bg border-b border-warm-border shrink-0">
-        <Link href="/">
-          <button className="p-2 -ml-2 hover:bg-warm-cream rounded-lg transition-colors">
-            <ChevronLeft className="w-4 h-4 text-warm-muted" />
-          </button>
+        <Link 
+          href="/"
+          className="p-2 -ml-2 hover:bg-warm-cream rounded-lg transition-colors inline-block"
+          aria-label="Go back"
+        >
+          <ChevronLeft className="w-4 h-4 text-warm-muted" />
         </Link>
         <div className="flex flex-col items-center">
           <span className="font-bold text-sm tracking-tight text-charcoal">AI Discovery Session</span>
@@ -250,7 +297,7 @@ const ChatPage: React.FC = () => {
               <div className="w-5 h-5 bg-charcoal rounded-full flex items-center justify-center">
                 <span className="text-amber text-[9px] font-bold">D</span>
               </div>
-              <span className="text-xs font-medium text-warm-muted">Arya from diyaa.ai</span>
+              <span className="text-xs font-medium text-warm-muted">Diyaa from diyaa.ai</span>
             </div>
           </div>
 
@@ -284,7 +331,7 @@ const ChatPage: React.FC = () => {
                   <span className="w-1.5 h-1.5 bg-amber rounded-full animate-pulse-soft [animation-delay:0.2s]" />
                   <span className="w-1.5 h-1.5 bg-amber rounded-full animate-pulse-soft [animation-delay:0.4s]" />
                 </div>
-                <span className="text-[11px] text-warm-muted font-medium ml-1">Arya is thinking</span>
+                <span className="text-[11px] text-warm-muted font-medium ml-1">diyaa is thinking</span>
               </div>
             </motion.div>
           )}
@@ -338,6 +385,7 @@ const ChatPage: React.FC = () => {
               <button
                 onClick={handleSend}
                 disabled={!input.trim() || isLoading}
+                aria-label="Send message"
                 className="p-2 text-amber disabled:text-warm-border transition-colors shrink-0"
               >
                 <Send className="w-4 h-4" />
@@ -361,19 +409,24 @@ const ChatPage: React.FC = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-charcoal/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            role="presentation"
           >
             <motion.div
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
               className="bg-white rounded-3xl border border-warm-border p-8 max-w-md w-full"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="modal-title"
+              aria-describedby="modal-description"
             >
               <div className="text-center mb-6">
                 <div className="w-14 h-14 bg-amber-bg border border-amber/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <span className="text-2xl">✦</span>
                 </div>
-                <h3 className="text-xl font-bold text-charcoal mb-1">Your AI Report is Ready</h3>
-                <p className="text-sm text-warm-muted">
+                <h3 id="modal-title" className="text-xl font-bold text-charcoal mb-1">Your AI Report is Ready</h3>
+                <p id="modal-description" className="text-sm text-warm-muted">
                   Where should we send your personalized AI implementation roadmap?
                 </p>
               </div>
@@ -385,6 +438,7 @@ const ChatPage: React.FC = () => {
                   </label>
                   <input
                     type="text"
+                    autoFocus
                     value={leadForm.name}
                     onChange={(e) => setLeadForm(prev => ({ ...prev, name: e.target.value }))}
                     placeholder="Your name"
@@ -438,7 +492,7 @@ const ChatPage: React.FC = () => {
                 )}
               </button>
               <p className="text-[10px] text-warm-muted text-center mt-3">
-                We will never share your info. This is between you and Arya.
+                We will never share your info. This is between you and diyaa.
               </p>
             </motion.div>
           </motion.div>
@@ -453,15 +507,14 @@ const ChatPage: React.FC = () => {
           className="p-4 bg-warm-bg border-t border-warm-border shrink-0"
         >
           <div className="max-w-2xl mx-auto text-center">
-            <Link href={`/report/${sessionId}`}>
-              <button
-                className="px-8 py-4 bg-amber text-charcoal font-bold rounded-2xl
-                           hover:bg-amber-hover transition-all active:scale-[0.98]
-                           flex items-center justify-center gap-2 mx-auto"
-              >
-                View Your AI Report
-                <ArrowRight className="w-4 h-4" />
-              </button>
+            <Link 
+              href={`/report/${reportId || sessionId}`}
+              className="px-8 py-4 bg-amber text-charcoal font-bold rounded-2xl
+                         hover:bg-amber-hover transition-all active:scale-[0.98]
+                         inline-flex items-center justify-center gap-2 mx-auto"
+            >
+              View Your AI Report
+              <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </motion.div>

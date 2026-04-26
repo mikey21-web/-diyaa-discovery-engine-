@@ -14,25 +14,45 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  const sessionId = req.query.session_id as string
+  const sessionIdFromRequest = req.query.session_id as string | undefined
+  const reportIdFromRequest = req.query.report_id as string | undefined
 
   if (req.method !== 'GET') return res.status(405).end()
 
-  if (!sessionId) {
-    return res.status(400).json({ error: 'Missing session_id' })
+  if (!sessionIdFromRequest && !reportIdFromRequest) {
+    return res.status(400).json({ error: 'Missing session_id or report_id' })
   }
 
   try {
     const supabase = getServiceClient()
+    let sessionId = sessionIdFromRequest ?? ''
+
+    if (reportIdFromRequest) {
+      const { data: reportLookup } = await supabase
+        .from('reports')
+        .select('session_id')
+        .eq('id', reportIdFromRequest)
+        .single()
+
+      if (!reportLookup) {
+        return res.status(404).json({ error: 'Report not found' })
+      }
+
+      sessionId = reportLookup.session_id
+    }
 
     const { data: session } = await supabase
       .from('sessions')
-      .select('*')
+      .select('extracted_data, ai_readiness_score, lead_captured')
       .eq('id', sessionId)
       .single()
 
     if (!session || !session.extracted_data) {
       return res.status(404).json({ error: 'Report not found' })
+    }
+
+    if (!session.lead_captured) {
+      return res.status(403).json({ error: 'Lead must be submitted to view the report' })
     }
 
     const extractedData = session.extracted_data as ExtractedData

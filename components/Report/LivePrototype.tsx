@@ -87,6 +87,16 @@ export default function LivePrototype({ sessionId, prototypeId }: Props) {
                   <p className="mt-1 text-emerald-700">
                     Connect your WhatsApp to deploy it live. Our team will set this up on your call.
                   </p>
+                  {result.sandbox_url && (
+                    <a
+                      href={result.sandbox_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex mt-3 text-emerald-700 font-semibold underline"
+                    >
+                      Open sandbox link
+                    </a>
+                  )}
                 </div>
               )}
 

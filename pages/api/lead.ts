@@ -6,7 +6,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServiceClient } from '@/lib/supabase'
 import { logger } from '@/lib/logger'
-import { enqueueJob, processDueJobs } from '@/lib/jobs'
+import { enqueueJob } from '@/lib/jobs'
 import type { LeadRequest, LeadResponse, ApiError, ExtractedData } from '@/lib/types'
 
 function normalizeWhatsapp(input: string): string {
@@ -46,21 +46,16 @@ export default async function handler(
   try {
     const supabase = getServiceClient()
 
-    // 1. Fetch Session + Report + Check Duplicates in PARALLEL
-    const [sessionRes, reportRes, leadCheckRes] = await Promise.all([
+    // 1. Fetch Session + Report in PARALLEL
+    const [sessionRes, reportRes] = await Promise.all([
       supabase.from('sessions').select('extracted_data').eq('id', session_id).single(),
-      supabase.from('reports').select('share_url').eq('session_id', session_id).single(),
-      supabase.from('leads').select('id').eq('session_id', session_id).maybeSingle()
+      supabase.from('reports').select('id, share_url').eq('session_id', session_id).single(),
     ]);
-
-    if (leadCheckRes.data) {
-      return res.status(200).json({ success: true });
-    }
 
     const extractedData = sessionRes.data?.extracted_data as ExtractedData | null;
     const reportUrl = reportRes.data?.share_url || null;
 
-    // 2. Atomic Lead Insert
+    // 2. Atomic Lead Insert (DB unique constraint prevents duplicates even under race conditions)
     const { error: insertError } = await supabase.from('leads').insert({
       session_id,
       name,
@@ -73,7 +68,10 @@ export default async function handler(
       email_failed: false
     })
 
-    if (insertError) throw insertError
+    // If lead already exists (UNIQUE constraint violation), that's OK — it was a retry
+    if (insertError && !insertError.message?.includes('duplicate')) {
+      throw insertError
+    }
 
     // 3. Mark session complete
     await supabase.from('sessions').update({ lead_captured: true }).eq('id', session_id)
@@ -102,12 +100,7 @@ export default async function handler(
       session_id,
     })
 
-    processDueJobs(10).catch((jobErr: unknown) => {
-      const err = jobErr as Error
-      logger.warn('Opportunistic job processing failed', { message: err.message })
-    })
-
-    return res.status(200).json({ success: true })
+    return res.status(200).json({ success: true, report_id: reportRes.data?.id || session_id } as any)
   } catch (err) {
     const error = err as Error
     logger.error('Lead Capture Crash', { msg: error.message, requestId })

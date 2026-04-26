@@ -1,0 +1,33 @@
+- generic [ref=e1]:
+  - generic [ref=e114]:
+    - banner [ref=e115]:
+      - link [ref=e116] [cursor=pointer]:
+        - /url: /
+        - button [ref=e117]:
+          - img [ref=e118]
+      - generic [ref=e120]:
+        - generic [ref=e121]: AI Discovery Session
+        - generic [ref=e122]: Phase 1 of 6
+      - generic [ref=e124]: D
+    - generic [ref=e126]:
+      - generic [ref=e128]:
+        - generic [ref=e130]: D
+        - generic [ref=e131]: diyaa from diyaa.ai
+      - generic [ref=e133]: Hey, I'm diyaa from diyaa.ai. Tell me about your business — what do you do and who do you do it for?
+      - generic [ref=e147]: I run a coaching business in Mumbai focused on digital marketing skills for small business owners
+      - generic [ref=e149]: How do most of your clients typically find out about your coaching services and reach out to you for the first time, is it through referrals, social media, your website, or something else?
+      - generic [ref=e151]: Mostly through LinkedIn and referrals from past students. We don't have a strong online presence otherwise
+      - generic [ref=e153]: You mentioned referrals from past students are a significant source of new leads, can you walk me through what a typical day looks like for your team in terms of handling these incoming leads and converting them into paying clients?
+      - generic [ref=e155]: We have 3 people on the team. We manually reach out to leads via email and LinkedIn messages. Follow-up is inconsistent - sometimes we follow up once, sometimes twice, but we often lose track
+      - generic [ref=e157]: It sounds like follow-up consistency could be a challenge, how often would you estimate that a lead falls through the cracks and doesn't become a client because you weren't able to follow up with them in a timely or effective manner?
+      - generic [ref=e159]: About 30-40% of leads go cold. We probably get 50 leads per month, so we're losing 15-20 potential students. Each student pays about 15000 rupees for our program, so that's around 2.25 to 3 lakhs per month we're leaving on the table
+      - generic [ref=e161]: So the potential revenue loss from lost leads is substantial, around 2.25 to 3 lakhs per month, what do you think is the biggest operational bottleneck in your team's workflow that's contributing to this issue of inconsistent follow-up and lost leads?
+    - generic [ref=e135]:
+      - generic [ref=e136]:
+        - textbox "Type your answer..." [active] [ref=e137]
+        - button [disabled] [ref=e138]:
+          - img [ref=e139]
+      - generic [ref=e142]:
+        - img [ref=e143]
+        - paragraph [ref=e145]: YOUR SESSION IS SECURE AND PRIVATE
+  - alert [ref=e113]: Discovery Session | diyaa from diyaa.ai

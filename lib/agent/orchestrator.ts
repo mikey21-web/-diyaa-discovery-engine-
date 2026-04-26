@@ -1,21 +1,85 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import Anthropic from '@anthropic-ai/sdk'
-import { getAnthropicClient, getOpusClient, callAnthropic } from '../anthropic'
+import Groq from 'groq-sdk'
+import type { ChatCompletionTool } from 'groq-sdk/resources/chat/completions'
+import { logger } from '../logger'
 import { loadBusinessModel, saveBusinessModel, mergeModel } from './businessModel'
 import { buildDiagnosticSystemPrompt, buildSynthesisSystemPrompt } from './prompts'
 import { ALL_TOOL_SCHEMAS, executeTool } from './tools/index'
 import { AgentPhase, AgentTurnResult, BusinessModel, ReportPayload } from './types'
 import { createClient } from '@supabase/supabase-js'
 
-const SONNET = 'claude-sonnet-4-6'
-const OPUS = 'claude-opus-4-7'
+const GROQ_MODEL = 'llama-3.3-70b-versatile'
 const MAX_TOOL_ROUNDS = 5
+const RATE_LIMIT_COOLDOWN_MS = 60 * 1000 // 1 minute cooldown per key
+
+// Track rate-limited keys with expiry
+const rateLimitedKeys = new Map<string, number>()
+
+// Convert Anthropic Tool format to Groq/OpenAI ChatCompletionTool format
+function convertToolsForGroq(tools: typeof ALL_TOOL_SCHEMAS): ChatCompletionTool[] {
+  return tools.map(tool => ({
+    type: 'function' as const,
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.input_schema as Record<string, unknown>,
+    },
+  }))
+}
+
+type MessageParam = { role: 'user' | 'assistant' | 'system'; content: string }
 
 function getServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
+}
+
+function getAvailableGroqKeys(): string[] {
+  const keys: string[] = []
+  for (let i = 0; i < 5; i++) {
+    const key = i === 0
+      ? process.env.GROQ_API_KEY
+      : process.env[`GROQ_API_KEY_${i}`]
+    if (key) keys.push(key)
+  }
+  if (keys.length === 0) throw new Error('No GROQ_API_KEY configured')
+  return keys
+}
+
+function getGroqClientWithKey(): { client: Groq; key: string } {
+  const allKeys = getAvailableGroqKeys()
+  const now = Date.now()
+
+  // Filter out rate-limited keys that haven't cooled down yet
+  const availableKeys = allKeys.filter(key => {
+    const limitedUntil = rateLimitedKeys.get(key)
+    if (!limitedUntil || limitedUntil < now) {
+      rateLimitedKeys.delete(key)
+      return true
+    }
+    return false
+  })
+
+  // If all keys are rate limited, throw error with 429 status
+  if (availableKeys.length === 0) {
+    logger.error('All Groq API keys are rate limited', { totalKeys: allKeys.length })
+    const error = new Error('All Groq API keys are rate limited')
+    ;(error as any).status = 429
+    throw error
+  }
+
+  // Pick random available key
+  const randomIndex = Math.floor(Math.random() * availableKeys.length)
+  const key = availableKeys[randomIndex]
+  logger.info('Selected Groq key', { available: availableKeys.length, total: allKeys.length })
+  return { client: new Groq({ apiKey: key }), key }
+}
+
+function markKeyRateLimited(key: string): void {
+  const cooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS
+  rateLimitedKeys.set(key, cooldownUntil)
+  logger.warn('Marked Groq key as rate limited', { cooldownMs: RATE_LIMIT_COOLDOWN_MS })
 }
 
 async function getSessionPhase(sessionId: string): Promise<AgentPhase> {
@@ -33,19 +97,19 @@ async function setSessionPhase(sessionId: string, phase: AgentPhase): Promise<vo
   await supabase.from('sessions').update({ agent_phase: phase }).eq('id', sessionId)
 }
 
-async function getConversationHistory(sessionId: string): Promise<Anthropic.MessageParam[]> {
+async function getConversationHistory(sessionId: string): Promise<MessageParam[]> {
   const supabase = getServiceClient()
   const { data } = await supabase
     .from('sessions')
     .select('conversation_history')
     .eq('id', sessionId)
     .single()
-  return (data?.conversation_history as Anthropic.MessageParam[]) ?? []
+  return (data?.conversation_history as MessageParam[]) ?? []
 }
 
 async function appendHistory(
   sessionId: string,
-  history: Anthropic.MessageParam[]
+  history: MessageParam[]
 ): Promise<void> {
   const supabase = getServiceClient()
   await supabase
@@ -64,89 +128,166 @@ export async function runAgentTurn(
     getSessionPhase(sessionId),
   ])
 
-  const updatedHistory: Anthropic.MessageParam[] = [
+  const updatedHistory: MessageParam[] = [
     ...history,
     { role: 'user', content: userMessage },
   ]
 
   const systemPrompt = buildDiagnosticSystemPrompt(model, phase)
   const toolCallsMade: string[] = []
-  let currentModel = model
+  let currentModel = { ...model }
 
-  const client = getAnthropicClient()
+  const { client, key: groqKey } = getGroqClientWithKey()
   let loopHistory = [...updatedHistory]
   let finalReply = ''
   let reportReady = false
   let salesPhaseTriggered = false
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    // Use 'as any' for cache_control — it's a valid API feature but older SDK typings may not include it
-    const systemBlock: any = {
-      type: 'text',
-      text: systemPrompt,
-      cache_control: { type: 'ephemeral' },
-    }
+  try {
+    let toolRound = 0
+    while (toolRound < MAX_TOOL_ROUNDS) {
+      const messages = [
+        { role: 'system' as const, content: systemPrompt },
+        ...loopHistory.map(msg => ({
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: msg.content,
+        })),
+      ]
 
-    const response = await callAnthropic(() =>
-      client.messages.create({
-        model: SONNET,
+      const response = await client.chat.completions.create({
+        model: GROQ_MODEL,
         max_tokens: 1024,
-        system: [systemBlock],
-        tools: ALL_TOOL_SCHEMAS,
-        messages: loopHistory,
-      } as any)
-    ) as Anthropic.Message
+        tools: convertToolsForGroq(ALL_TOOL_SCHEMAS),
+        tool_choice: 'auto',
+        messages: messages as any,
+      })
 
-    const textBlocks = response.content.filter(b => b.type === 'text')
-    const currentText = textBlocks.map(b => (b as Anthropic.TextBlock).text).join('')
+      const message = response.choices[0]?.message
+      const content = message?.content ?? ''
 
-    if (currentText.includes('[REPORT_READY]')) {
-      reportReady = true
-      finalReply = currentText.replace('[REPORT_READY]', '').trim()
-    } else if (currentText.includes('[SALES_PHASE]')) {
-      salesPhaseTriggered = true
-      finalReply = currentText.replace('[SALES_PHASE]', '').trim()
-    } else {
-      finalReply = currentText
-    }
+      // Add assistant response to history
+      loopHistory.push({
+        role: 'assistant',
+        content: content,
+      })
 
-    if (response.stop_reason !== 'tool_use') break
-
-    const toolUseBlocks = response.content.filter(b => b.type === 'tool_use') as Anthropic.ToolUseBlock[]
-    if (!toolUseBlocks.length) break
-
-    const toolResults: Anthropic.ToolResultBlockParam[] = []
-
-    for (const toolCall of toolUseBlocks) {
-      toolCallsMade.push(toolCall.name)
-      const result = await executeTool(
-        toolCall.name,
-        toolCall.input as Record<string, unknown>,
-        currentModel
-      )
-
-      if (result.model_patch) {
-        currentModel = mergeModel(currentModel, result.model_patch)
+      // Check for report signals
+      if (content.includes('[REPORT_READY]')) {
+        reportReady = true
+        finalReply = content.replace('[REPORT_READY]', '').trim()
+        break
+      } else if (content.includes('[SALES_PHASE]')) {
+        salesPhaseTriggered = true
+        finalReply = content.replace('[SALES_PHASE]', '').trim()
+        break
       }
 
-      toolResults.push({
-        type: 'tool_result',
-        tool_use_id: toolCall.id,
-        content: JSON.stringify(result.output),
-      })
-    }
+      // Handle tool calls (Groq uses OpenAI format)
+      const toolCalls = (message?.tool_calls ?? []) as Array<{ type: string; function: { name: string; arguments: string }; id: string }>
+      if (toolCalls.length === 0) {
+        finalReply = content
+        break
+      }
 
-    loopHistory = [
-      ...loopHistory,
-      { role: 'assistant', content: response.content },
-      { role: 'user', content: toolResults },
-    ]
+      // Execute each tool and collect results
+      let competitorFindingsForWeaving: string[] = []
+
+      for (const toolCall of toolCalls) {
+        if (toolCall.type !== 'function') continue
+
+        toolCallsMade.push(toolCall.function.name)
+        const input = JSON.parse(toolCall.function.arguments)
+        const toolResult = await executeTool(toolCall.function.name, input, currentModel)
+
+        // Apply model patch if tool returned one
+        if (toolResult.model_patch) {
+          currentModel = mergeModel(currentModel, toolResult.model_patch)
+        }
+
+        // If this is competitor_deep_scan, capture findings for urgency narrative
+        if (toolCall.function.name === 'competitor_deep_scan') {
+          const scanResult = toolResult.output as Record<string, any>
+          if (scanResult?.finding) {
+            const finding = scanResult.finding
+            const signals: string[] = [
+              ...(finding.strengths || []),
+              ...(finding.weaknesses || []),
+            ]
+            if (finding.ai_usage) signals.push(finding.ai_usage)
+            competitorFindingsForWeaving = [
+              ...competitorFindingsForWeaving,
+              ...signals,
+            ]
+          }
+        }
+
+        // Add tool result to history
+        loopHistory.push({
+          role: 'user',
+          content: `Tool result for ${toolCall.function.name}: ${JSON.stringify(toolResult.output)}`,
+        })
+      }
+
+      // If we just discovered competitor findings, weave them into the next prompt
+      if (competitorFindingsForWeaving.length > 0) {
+        const competitorUrgency = `
+COMPETITOR FINDINGS JUST DISCOVERED:
+${competitorFindingsForWeaving.map(f => `- ${f}`).join('\n')}
+
+In your NEXT response, weave these findings into an urgency narrative. Example:
+"I just checked their website and found they deployed a WhatsApp bot 3 weeks ago with 5-min response time. You're at 2-3 hours. That's likely costing you 3-5 deals a week."
+
+Make the founder feel the competitive pressure. Be specific, not generic.`
+
+        loopHistory.push({
+          role: 'user',
+          content: competitorUrgency,
+        })
+
+        try {
+          const supabase = getServiceClient()
+          await supabase
+            .from('sessions')
+            .update({ competitor_findings: competitorFindingsForWeaving })
+            .eq('id', sessionId)
+        } catch (e) {
+          // ignore errors
+        }
+      }
+
+      toolRound++
+    }
+  } catch (err) {
+    const error = err as { status?: number; message?: string }
+    if (error.status === 429 || error.status === 402) {
+      markKeyRateLimited(groqKey)
+      logger.warn('Groq rate limit/quota hit, marking key as limited', { status: error.status, key: groqKey })
+      throw new Error('Groq API rate limited — trying another key on next request')
+    }
+    logger.error('Groq API error', { error: error.message, status: error.status })
+    throw err
   }
 
+  // Phase advancement logic
   let newPhase: AgentPhase = phase
+  let reportPayload: ReportPayload | undefined
+
   if (reportReady) {
     newPhase = 'complete'
-  } else if (salesPhaseTriggered || currentModel.completeness_score >= 75) {
+  } else if (
+    // Auto-trigger report when we have enough data (3-minute audit fast path)
+    currentModel.completeness_score >= 75 &&
+    currentModel.leaks.length >= 2 &&
+    phase !== 'complete'
+  ) {
+    newPhase = 'complete'
+    reportReady = true
+    logger.info('Auto-triggered report generation', {
+      sessionId,
+      completeness: currentModel.completeness_score,
+      leaks: currentModel.leaks.length,
+    })
+  } else if (salesPhaseTriggered) {
     newPhase = 'sales'
   } else if (currentModel.completeness_score >= 50 && currentModel.competitors.names.length > 0) {
     newPhase = 'competitor_xray'
@@ -154,27 +295,14 @@ export async function runAgentTurn(
     newPhase = 'quantifying'
   }
 
-  let reportPayload: ReportPayload | undefined
-  if ((salesPhaseTriggered || newPhase === 'sales') && phase !== 'sales' && phase !== 'complete') {
-    reportPayload = await runOpusSynthesis(sessionId, currentModel)
+  // Unified synthesis trigger: run when report is ready or synthesis is needed
+  if ((reportReady || newPhase === 'complete' || (salesPhaseTriggered && phase !== 'complete')) && !reportPayload) {
+    reportPayload = await runGroqSynthesis(sessionId, currentModel)
     newPhase = 'complete'
     reportReady = true
   }
 
-  if (reportReady && !reportPayload) {
-    try {
-      const jsonMatch = finalReply.match(/\{[\s\S]+\}/)
-      if (jsonMatch) {
-        const extracted = JSON.parse(jsonMatch[0])
-        finalReply = finalReply.replace(jsonMatch[0], '').trim()
-        reportPayload = await buildReportPayload(sessionId, currentModel, extracted)
-      }
-    } catch {
-      // non-critical
-    }
-  }
-
-  const finalHistory: Anthropic.MessageParam[] = [
+  const finalHistory: MessageParam[] = [
     ...updatedHistory,
     { role: 'assistant', content: finalReply },
   ]
@@ -195,33 +323,78 @@ export async function runAgentTurn(
   }
 }
 
-async function runOpusSynthesis(sessionId: string, model: BusinessModel): Promise<ReportPayload> {
-  const client = getOpusClient()
+async function runGroqSynthesis(sessionId: string, model: BusinessModel): Promise<ReportPayload> {
+  const { client, key: groqKey } = getGroqClientWithKey()
+
+  // Populate model from conversation if missing
+  if (!model.identity.name || model.completeness_score === 0) {
+    const supabase = getServiceClient()
+    const { data } = await supabase
+      .from('sessions')
+      .select('conversation_history')
+      .eq('id', sessionId)
+      .single()
+
+    const history = (data?.conversation_history as MessageParam[]) ?? []
+    populateModelFromHistory(model, history)
+  }
+
   const systemPrompt = buildSynthesisSystemPrompt(model)
 
-  // Extended thinking is a beta feature — use 'as any' for the 'thinking' param
-  const response = await callAnthropic(() =>
-    client.messages.create({
-      model: OPUS,
-      max_tokens: 16000,
-      thinking: { type: 'enabled', budget_tokens: 10000 },
-      system: systemPrompt,
-      messages: [{ role: 'user', content: 'Generate the complete ReportPayload JSON now.' }],
-    } as any)
-  ) as Anthropic.Message
+  let response
+  try {
+    response = await client.chat.completions.create({
+      model: GROQ_MODEL,
+      max_tokens: 4000,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: 'Generate the complete ReportPayload JSON now.' },
+      ] as any,
+    })
+  } catch (err) {
+    const error = err as { status?: number; message?: string }
+    if (error.status === 429 || error.status === 402) {
+      markKeyRateLimited(groqKey)
+      logger.warn('Synthesis hit rate limit, marked key', { status: error.status })
+    }
+    throw err
+  }
 
-  const textBlock = response.content.find(b => b.type === 'text') as Anthropic.TextBlock | undefined
-  const raw = textBlock?.text ?? '{}'
-
+  const raw = response.choices[0]?.message?.content ?? '{}'
   const cleaned = raw.replace(/^```json\s*/m, '').replace(/```\s*$/m, '').trim()
+
   let parsed: Partial<ReportPayload>
   try {
     parsed = JSON.parse(cleaned)
-  } catch {
+  } catch (err) {
+    logger.error('Report synthesis JSON parse failed', { error: (err as Error).message })
     parsed = {}
   }
 
   return buildReportPayload(sessionId, model, parsed)
+}
+
+function populateModelFromHistory(model: BusinessModel, history: MessageParam[]): void {
+  const convo = history.map(m => m.content).join('\n')
+
+  // Generic pattern extraction (fallback if tools didn't populate)
+  if (!model.identity.team_size) {
+    const teamMatch = convo.match(/(\d+)\s+(people|person|team members|staff|employees)/)
+    if (teamMatch) model.identity.team_size = parseInt(teamMatch[1])
+  }
+
+  if (!model.ai_readiness.tools.length) {
+    const toolMatches = convo.match(/(WhatsApp|Gmail|Google Sheets|Zoom|Slack|Notion|Airtable|Salesforce|HubSpot)/gi)
+    if (toolMatches) {
+      const uniqueTools = Array.from(new Set(toolMatches.map(t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase())))
+      model.ai_readiness.tools = uniqueTools
+    }
+  }
+
+  // Ensure minimum score for synthesis to work
+  if (model.completeness_score < 50) {
+    model.completeness_score = 50
+  }
 }
 
 async function buildReportPayload(
@@ -229,6 +402,17 @@ async function buildReportPayload(
   model: BusinessModel,
   extracted: Partial<ReportPayload>
 ): Promise<ReportPayload> {
+  // Build competitor findings from xray_findings for the report
+  const competitorFindings = model.competitors.xray_findings?.length
+    ? [{
+        name: model.competitors.names[0] || 'Competitor',
+        findings: model.competitors.xray_findings.map(f =>
+          typeof f === 'string' ? f : `${f.name}: ${f.strengths?.join(', ') || f.ai_usage || 'competitor signal'}`
+        ),
+        urgency_score: Math.min(10, 5 + (model.competitors.xray_findings?.length || 0)),
+      }]
+    : undefined
+
   const payload: ReportPayload = {
     session_id: sessionId,
     business_model: model,
@@ -252,10 +436,14 @@ async function buildReportPayload(
       urgency: 'The window to move first is closing.',
       social_proof: 'diyaa.ai has helped similar businesses cut response times and grow revenue.',
       roadmap_summary: 'Month 1: Quick wins. Month 2: Core automation. Month 3: Intelligence layer.',
-      cta_primary: (model.revenue.monthly_inr ?? 0) > 2000000 ? 'agency_call' : 'saas_signup',
+      cta_primary: 'agency_call',
     },
     ai_readiness_score: computeReadinessScore(model),
     generated_at: new Date().toISOString(),
+    // Feature 2: Interactive prototype URL
+    prototype_html_url: `${process.env.NEXT_PUBLIC_APP_URL}/report/${sessionId}/interactive`,
+    // Feature 1: Structured competitor findings
+    competitor_findings: competitorFindings,
   }
 
   const supabase = getServiceClient()
@@ -263,6 +451,7 @@ async function buildReportPayload(
     {
       session_id: sessionId,
       share_url: `${process.env.NEXT_PUBLIC_APP_URL}/report/${sessionId}`,
+      prototype_html_url: payload.prototype_html_url,
       created_at: new Date().toISOString(),
     },
     { onConflict: 'session_id' }

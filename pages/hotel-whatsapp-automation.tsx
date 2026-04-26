@@ -21,6 +21,7 @@ export default function HotelWhatsAppAutomation() {
         { value: '25-40%', label: 'No-show reduction possible' },
         { value: '15-20%', label: 'Upsell conversion via chat' },
       ]}
+      industryKey="hospitality"
     />
   )
 }

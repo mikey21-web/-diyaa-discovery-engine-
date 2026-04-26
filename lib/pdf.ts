@@ -222,9 +222,31 @@ export function generateReportHTML(
     ${totalLeak > 0 ? `<div class="total-leak"><div class="total-leak-label">Total Estimated Annual Revenue Leak</div><div class="total-leak-value">${formatINR(totalLeak)}</div></div>` : ''}
   </div>
 
-  <!-- Section 4: 90-Day Roadmap -->
+  <!-- Section 4: AI Implementation Priorities -->
   <div class="section">
-    <div class="section-title"><span class="section-num">4</span> 90-Day AI Roadmap</div>
+    <div class="section-title"><span class="section-num">4</span> AI Implementation Priorities</div>
+    <div style="background:#fff; border:1px solid #E5E2DB; border-radius:16px; overflow:hidden;">
+      ${(extractedData.roadmap || []).slice(0, 6).map((item, idx) => `
+        <div style="padding:24px; border-bottom:${idx === (extractedData.roadmap?.length || 0) - 1 || idx === 5 ? 'none' : '1px solid #E5E2DB'}; display:flex; justify-content:space-between; align-items:flex-start;">
+          <div style="flex:1;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+              <span style="font-weight:700; color:#D4A843; font-size:13px;">#${idx + 1}</span>
+              <span style="font-size:16px; font-weight:700; color:#0F0F0F;">${escapeHtml(item.title || '')}</span>
+            </div>
+            <p style="font-size:13px; color:#3D3D3D; line-height:1.5; margin-bottom:8px;">${escapeHtml(item.what_it_does || '')}</p>
+            <div style="display:flex; gap:16px; font-size:12px; color:#8A8578;">
+              <span><strong>Build:</strong> ${item.build_time || '2-3 weeks'}</span>
+              <span><strong>Impact:</strong> ₹${item.monthly_value_inr ? (item.monthly_value_inr * 12 / 100000).toFixed(0) : '0'}L/year</span>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+
+  <!-- Section 5: 90-Day Roadmap -->
+  <div class="section">
+    <div class="section-title"><span class="section-num">5</span> 90-Day Implementation Timeline</div>
     <div class="roadmap-grid">
       <div class="roadmap-card">
         <div class="roadmap-month">Month 1</div>
@@ -247,9 +269,9 @@ export function generateReportHTML(
     </div>
   </div>
 
-  <!-- Section 5: AI Readiness Score -->
+  <!-- Section 6: AI Readiness Score -->
   <div class="section">
-    <div class="section-title"><span class="section-num">5</span> AI Readiness Score</div>
+    <div class="section-title"><span class="section-num">6</span> AI Readiness Score</div>
     <div class="card score-card">
       <span class="score-value">${readinessScore}</span><span class="score-suffix">/10</span>
       <div class="score-tier">${interpretation.tier}</div>
@@ -258,9 +280,9 @@ export function generateReportHTML(
     </div>
   </div>
 
-  <!-- Section 6: CTA -->
+  <!-- Section 7: Next Steps -->
   <div class="section">
-    <div class="section-title"><span class="section-num">6</span> Next Step</div>
+    <div class="section-title"><span class="section-num">7</span> Next Steps</div>
     <div class="cta-section">
       <p class="cta-text">Based on what you have shared, the fastest ROI is automating your lead response and follow-up system. diyaa.ai has built this for multiple ${industryLabel} clients. Book a 30-minute call to see a live demo.</p>
       <div class="cta-buttons">

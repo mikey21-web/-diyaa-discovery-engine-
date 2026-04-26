@@ -24,7 +24,7 @@ const INDUSTRY_DATA: Record<string, IndustryFact[]> = {
     { metric: 'upsell_via_chat', value: '15-20%', context: 'Upsell conversion rate via automated in-stay WhatsApp messages', source: 'Industry data' },
     { metric: 'repeat_guest_rate_top', value: '35%', context: 'Top-performing boutique hotels achieve 35% repeat guest rate', source: 'Industry data' },
   ],
-  fashion_d2c: [
+  d2c_fashion: [
     { metric: 'cart_abandonment_india_mobile', value: '90%', context: 'Cart abandonment rate on mobile in India', source: 'Statista 2025' },
     { metric: 'whatsapp_cart_recovery', value: '28%', context: 'Cart recovery conversion via WhatsApp message', source: 'CampaignHQ 2026' },
     { metric: 'email_cart_recovery', value: '3-5%', context: 'Cart recovery conversion via email', source: 'Cooby 2024' },
@@ -85,9 +85,9 @@ function normalizeIndustry(raw: string): string {
     restaurant: 'fnb',
     food: 'fnb',
     'f&b': 'fnb',
-    fashion: 'fashion_d2c',
-    ecommerce: 'fashion_d2c',
-    clothing: 'fashion_d2c',
+    fashion: 'd2c_fashion',
+    ecommerce: 'd2c_fashion',
+    clothing: 'd2c_fashion',
     coaching: 'coaching',
     education: 'coaching',
     consulting: 'coaching',

@@ -18,6 +18,7 @@ interface VerticalPageProps {
   metaTitle: string
   metaDescription: string
   slug: string
+  industryKey?: string
 }
 
 const VerticalLandingPage: React.FC<VerticalPageProps> = ({
@@ -29,7 +30,10 @@ const VerticalLandingPage: React.FC<VerticalPageProps> = ({
   metaTitle,
   metaDescription,
   slug,
+  industryKey,
 }) => {
+  const chatUrl = industryKey ? `/chat?industry=${industryKey}` : '/chat'
+
   return (
     <div className="min-h-screen bg-warm-bg font-sans">
       <Head>
@@ -51,10 +55,8 @@ const VerticalLandingPage: React.FC<VerticalPageProps> = ({
               <span className="font-bold text-base tracking-tight text-charcoal">diyaa.ai</span>
             </div>
           </Link>
-          <Link href="/chat">
-            <button className="px-5 py-2 bg-charcoal text-warm-bg text-sm font-semibold rounded-full hover:bg-charcoal-soft transition-all">
-              Start Free Audit
-            </button>
+          <Link href={chatUrl} className="px-5 py-2 bg-charcoal text-warm-bg text-sm font-semibold rounded-full hover:bg-charcoal-soft transition-all">
+            Start Free Audit
           </Link>
         </div>
       </nav>
@@ -72,11 +74,9 @@ const VerticalLandingPage: React.FC<VerticalPageProps> = ({
             <p className="text-lg text-warm-muted max-w-xl mx-auto mb-8 leading-relaxed">
               {subheadline}
             </p>
-            <Link href="/chat">
-              <button className="px-8 py-4 bg-charcoal text-warm-bg font-bold rounded-2xl hover:bg-charcoal-soft transition-all flex items-center gap-2 mx-auto group">
-                Get Your Free AI Audit
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </button>
+            <Link href={chatUrl} className="px-8 py-4 bg-charcoal text-warm-bg font-bold rounded-2xl hover:bg-charcoal-soft transition-all inline-flex items-center gap-2 mx-auto group">
+              Get Your Free AI Audit
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </Link>
           </motion.div>
         </div>
@@ -128,10 +128,8 @@ const VerticalLandingPage: React.FC<VerticalPageProps> = ({
             <p className="text-warm-muted mb-8 max-w-md mx-auto text-sm">
               10 minutes. Free. No signup required. Get a branded implementation roadmap.
             </p>
-            <Link href="/chat">
-              <button className="px-10 py-4 bg-amber text-charcoal font-bold rounded-2xl hover:bg-amber-hover transition-all">
-                Start Free AI Audit
-              </button>
+            <Link href={chatUrl} className="px-10 py-4 bg-amber text-charcoal font-bold rounded-2xl hover:bg-amber-hover transition-all inline-flex">
+              Start Free AI Audit
             </Link>
           </div>
         </div>

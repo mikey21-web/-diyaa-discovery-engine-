@@ -186,6 +186,7 @@ export interface LeadRequest {
 
 export interface LeadResponse {
   success: boolean
+  report_id?: string
 }
 
 export interface ApiError {

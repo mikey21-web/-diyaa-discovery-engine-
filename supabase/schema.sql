@@ -177,3 +177,57 @@ CREATE POLICY "Reports update service role only"
 CREATE POLICY "Leads insert service role only"
   ON leads FOR INSERT
   WITH CHECK (auth.role() = 'service_role');
+
+-- ========================================
+-- Schema Update 5: Agent v2 & Prototypes
+-- ========================================
+
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS agent_phase TEXT DEFAULT 'diagnostic';
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS competitor_findings JSONB DEFAULT '[]';
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS business_models (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id   uuid REFERENCES sessions(id) ON DELETE CASCADE,
+  model        jsonb NOT NULL DEFAULT '{}',
+  completeness_score int DEFAULT 0,
+  updated_at   timestamptz DEFAULT now(),
+  CONSTRAINT business_models_session_id_unique UNIQUE (session_id)
+);
+
+CREATE TABLE IF NOT EXISTS prototypes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id uuid REFERENCES sessions(id) ON DELETE CASCADE NOT NULL,
+  bot_config jsonb NOT NULL DEFAULT '{}',
+  sandbox_url text,
+  whatsapp_qr text,
+  status text DEFAULT 'provisioning' CHECK (status IN ('provisioning', 'live', 'expired')),
+  expires_at timestamptz,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS competitor_research (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id uuid REFERENCES sessions(id) ON DELETE CASCADE NOT NULL,
+  competitor_name text NOT NULL,
+  findings jsonb NOT NULL DEFAULT '{}',
+  researched_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS prototype_html_url TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS ai_readiness_score NUMERIC;
+
+CREATE INDEX IF NOT EXISTS idx_sessions_agent_phase ON sessions(agent_phase);
+CREATE INDEX IF NOT EXISTS idx_business_models_session_id ON business_models(session_id);
+CREATE INDEX IF NOT EXISTS idx_prototypes_session ON prototypes(session_id);
+CREATE INDEX IF NOT EXISTS idx_competitor_research_session ON competitor_research(session_id);
+CREATE INDEX IF NOT EXISTS idx_reports_prototype_url ON reports(prototype_html_url) WHERE prototype_html_url IS NOT NULL;
+
+ALTER TABLE business_models ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prototypes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE competitor_research ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_role_business_models" ON business_models FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
+CREATE POLICY "service_role_prototypes" ON prototypes FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
+CREATE POLICY "service_role_competitor_research" ON competitor_research FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
+

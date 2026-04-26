@@ -21,6 +21,7 @@ export default function FashionBrandAIAudit() {
         { value: '90%', label: 'Mobile cart abandonment' },
         { value: '3x', label: 'Repeat rate with WhatsApp' },
       ]}
+      industryKey="d2c_fashion"
     />
   )
 }

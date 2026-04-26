@@ -30,24 +30,33 @@ export default async function handler(
 
   try {
     const supabase = getServiceClient()
+    const { industry } = req.body || {}
 
-    const OPENING_MESSAGE = "Hey, I'm Arya from diyaa.ai. Tell me about your business — what do you do and who do you do it for?"
+    // Map industry key to a human-readable term if provided
+    const industryMap: Record<string, string> = {
+      real_estate: 'real estate',
+      hospitality: 'hotel & hospitality',
+      fnb: 'restaurant',
+      coaching: 'coaching',
+      d2c_fashion: 'D2C fashion',
+    }
+
+    const industryMention = industry && industryMap[industry] ? ` your ${industryMap[industry]} ` : ' your '
+
+    const OPENING_MESSAGE = `Hey there 👋 I'm Diyaa from diyaa.ai. In the next 10 minutes, I'll show you exactly where AI can save${industryMention}business time, money, and lost revenue. Let's start with your operations — tell me a bit about how you currently interact with your customers today?`
 
     const { data, error } = await supabase
       .from('sessions')
       .insert({
         status: 'active',
-        phase: 1,
-        agent_phase: 'diagnostic',
         conversation_history: [
+          ...(industry ? [{ role: 'system', content: `Context: The user came from the ${industryMap[industry] || industry} landing page.`, timestamp: new Date().toISOString() }] : []),
           {
             role: 'assistant',
             content: OPENING_MESSAGE,
             timestamp: new Date().toISOString(),
           },
         ],
-        extracted_data: null,
-        ai_readiness_score: null,
       })
       .select('id, created_at')
       .single()

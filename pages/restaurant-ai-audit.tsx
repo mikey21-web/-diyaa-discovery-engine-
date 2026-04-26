@@ -21,6 +21,7 @@ export default function RestaurantAIAudit() {
         { value: '40%', label: 'More reviews via WhatsApp' },
         { value: '<3 min', label: 'Target order inquiry response' },
       ]}
+      industryKey="fnb"
     />
   )
 }

@@ -3,6 +3,7 @@ import { getServiceClient } from '@/lib/supabase'
 import { loadBusinessModel } from '@/lib/agent/businessModel'
 import { buildBotConfigFromModel } from '@/lib/agent/tools/prototypeBuilder'
 import { logger } from '@/lib/logger'
+import { rateLimit, getIP } from '@/lib/rateLimit'
 
 interface ProvisionResponse {
   prototype_id: string
@@ -20,8 +21,17 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ProvisionResponse | ApiError>
 ) {
+  const requestId = Math.random().toString(36).slice(2, 10)
+  const startedAt = Date.now()
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' })
+  }
+
+  const ip = getIP(req)
+  const { allowed } = await rateLimit(ip, { limit: 5, windowMs: 60000 })
+  if (!allowed) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.', code: 'RATE_LIMIT_EXCEEDED' })
   }
 
   const { session_id } = req.body as { session_id: string }
@@ -31,6 +41,21 @@ export default async function handler(
 
   try {
     const supabase = getServiceClient()
+
+    const { data: session, error: sessionErr } = await supabase
+      .from('sessions')
+      .select('status, lead_captured')
+      .eq('id', session_id)
+      .single()
+
+    if (sessionErr || !session) {
+      logger.error('Session fetch failed', { requestId, session_id })
+      return res.status(404).json({ error: 'Session not found', code: 'NOT_FOUND' })
+    }
+
+    if (session.status !== 'report_generated' || !session.lead_captured) {
+      return res.status(403).json({ error: 'Lead required and report must be generated', code: 'FORBIDDEN' })
+    }
 
     // Check if prototype already exists
     const { data: existing } = await supabase
@@ -79,25 +104,42 @@ export default async function handler(
           const createData = await createRes.json()
 
           // Set instance settings
-          await fetch(`${evolutionUrl}/settings/set/${botConfig.instance_name}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', apikey: evolutionKey },
-            body: JSON.stringify({
-              rejectCall: true,
-              msgCall: 'I am an AI assistant. Please send a text message.',
-              ignoreGroups: true,
-              alwaysOnline: true,
-              readMessages: true,
-            }),
-          })
+          try {
+            const settingsRes = await fetch(`${evolutionUrl}/settings/set/${botConfig.instance_name}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', apikey: evolutionKey },
+              body: JSON.stringify({
+                rejectCall: true,
+                msgCall: 'I am an AI assistant. Please send a text message.',
+                ignoreGroups: true,
+                alwaysOnline: true,
+                readMessages: true,
+              }),
+            })
 
-          sandboxUrl = createData.qrcode?.base64
-            ? `${evolutionUrl}/instance/qrcode/${botConfig.instance_name}`
-            : sandboxUrl
-          whatsappQr = createData.qrcode?.base64
+            if (!settingsRes.ok) {
+              // Compensation: clean up created instance if settings update failed
+              logger.warn('Settings update failed, cleaning up instance', { requestId, session_id, instanceName: botConfig.instance_name })
+              await fetch(`${evolutionUrl}/instance/logout/${botConfig.instance_name}`, {
+                method: 'DELETE',
+                headers: { apikey: evolutionKey },
+              }).catch(cleanupErr => {
+                logger.error('Instance cleanup failed', { requestId, session_id, error: (cleanupErr as Error).message })
+              })
+              throw new Error('Failed to configure instance settings')
+            }
+
+            sandboxUrl = createData.qrcode?.base64
+              ? `${evolutionUrl}/instance/qrcode/${botConfig.instance_name}`
+              : sandboxUrl
+            whatsappQr = createData.qrcode?.base64
+          } catch (settingsErr) {
+            // Instance was cleaned up above, now throw to be caught by outer try/catch
+            throw settingsErr
+          }
         }
       } catch (err) {
-        logger.warn('Evolution API provision failed, using fallback', { session_id, err })
+        logger.warn('Evolution API provision failed, using fallback', { requestId, session_id, error: (err as Error).message })
       }
     }
 
@@ -124,7 +166,9 @@ export default async function handler(
     })
   } catch (err) {
     const error = err as Error
-    logger.error('Prototype provision error', { msg: error.message, session_id })
+    logger.error('Prototype provision error', { requestId, session_id, msg: error.message })
     return res.status(500).json({ error: 'Failed to provision prototype', code: 'INTERNAL_ERROR' })
+  } finally {
+    logger.info('Prototype provision completed', { requestId, session_id, durationMs: Date.now() - startedAt })
   }
 }

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { motion } from 'framer-motion'
-import { Mail, ExternalLink } from 'lucide-react'
+import { Mail, ExternalLink, Download } from 'lucide-react'
 import type { ReportPayload } from '@/lib/agent/types'
 import DigitalTwin from '@/components/Report/DigitalTwin'
 import CompetitorXRay from '@/components/Report/CompetitorXRay'
@@ -18,18 +18,19 @@ type PageState = 'loading' | 'ready' | 'error'
 
 export default function ReportPage() {
   const router = useRouter()
-  const sessionId = router.query.id as string
+  const reportRouteId = router.query.id as string
   const calLink = process.env.NEXT_PUBLIC_CAL_LINK || 'https://cal.com/uday-diyaa'
   const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '918074228036'
 
   const [state, setState] = useState<PageState>('loading')
   const [payload, setPayload] = useState<ReportPayload | null>(null)
   const [reportId, setReportId] = useState<string>('')
+  const [isDownloading, setIsDownloading] = useState(false)
 
   const loadReport = useCallback(
     async (attempt = 0) => {
       try {
-        const res = await fetch(`/api/report?session_id=${sessionId}`)
+        const res = await fetch(`/api/report?report_id=${reportRouteId}`)
         if (res.status === 400) {
           // Not ready yet — poll
           if (attempt < 15) {
@@ -48,13 +49,51 @@ export default function ReportPage() {
         setState('error')
       }
     },
-    [sessionId]
+    [reportRouteId]
   )
 
+  const downloadPDF = useCallback(async () => {
+    try {
+      setIsDownloading(true)
+        const res = await fetch('/api/report-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ report_id: reportId || reportRouteId }),
+        })
+
+      if (!res.ok) throw new Error('PDF generation failed')
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+        a.download = `AI_Implementation_Report_${(reportId || reportRouteId).slice(0, 8)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (err) {
+      console.error('PDF download failed:', err)
+      alert('Failed to download PDF. Please try again.')
+    } finally {
+      setIsDownloading(false)
+    }
+  }, [reportId, reportRouteId])
+
   useEffect(() => {
-    if (!sessionId) return
+    if (!reportRouteId) return
     loadReport()
-  }, [sessionId, loadReport])
+  }, [reportRouteId, loadReport])
+
+  useEffect(() => {
+    if (!reportId) return
+
+    void fetch('/api/report-view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report_id: reportId }),
+    }).catch(() => null)
+  }, [reportId])
 
   if (state === 'loading') {
     return (
@@ -103,6 +142,15 @@ export default function ReportPage() {
             <span className="font-bold tracking-tight">diyaa.ai</span>
           </div>
           <div className="hidden md:flex gap-4">
+            <button
+              onClick={downloadPDF}
+              disabled={isDownloading}
+              className="flex items-center gap-2 text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors disabled:opacity-50"
+              title="Download as PDF"
+            >
+              <Download className="w-4 h-4" />
+              {isDownloading ? 'Generating...' : 'Download PDF'}
+            </button>
             <a href={calLink} target="_blank" rel="noreferrer" className="text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors">
               Book Call
             </a>
@@ -271,13 +319,23 @@ export default function ReportPage() {
 
       {/* Mobile sticky bar */}
       <div className="fixed bottom-4 left-4 right-4 z-50 md:hidden">
-        <div className="bg-zinc-900/95 backdrop-blur-xl border border-white/10 p-3 rounded-2xl shadow-2xl flex gap-3">
-          <a href={calLink} target="_blank" rel="noreferrer" className="flex-1 bg-white text-zinc-900 font-bold text-sm py-3 rounded-xl text-center">
-            Book Call
-          </a>
-          <a href={whatsappLink} target="_blank" rel="noreferrer" className="flex-1 border border-zinc-700 text-white font-bold text-sm py-3 rounded-xl text-center">
-            WhatsApp
-          </a>
+        <div className="bg-zinc-900/95 backdrop-blur-xl border border-white/10 p-2 rounded-2xl shadow-2xl space-y-2">
+          <button
+            onClick={downloadPDF}
+            disabled={isDownloading}
+            className="w-full flex items-center justify-center gap-2 bg-white text-zinc-900 font-bold text-sm py-3 rounded-xl disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            {isDownloading ? 'Generating...' : 'Download PDF'}
+          </button>
+          <div className="flex gap-2">
+            <a href={calLink} target="_blank" rel="noreferrer" className="flex-1 bg-white text-zinc-900 font-bold text-sm py-2 rounded-xl text-center text-xs">
+              Book Call
+            </a>
+            <a href={whatsappLink} target="_blank" rel="noreferrer" className="flex-1 border border-zinc-700 text-white font-bold text-sm py-2 rounded-xl text-center text-xs">
+              WhatsApp
+            </a>
+          </div>
         </div>
       </div>
     </div>

@@ -44,6 +44,25 @@ async function rateLimitWithUpstash(
   return { allowed: true, remaining: options.limit - count }
 }
 
+// Cleanup stale entries every 10 minutes
+if (typeof globalThis !== 'undefined' && !('_rateLimitCleanupScheduled' in globalThis)) {
+  (globalThis as any)._rateLimitCleanupScheduled = true
+  setInterval(() => {
+    const now = Date.now()
+    let cleaned = 0
+    const ipsToDelete: string[] = []
+    rateLimitMap.forEach((record, ip) => {
+      if (now > record.resetAt) {
+        ipsToDelete.push(ip)
+      }
+    })
+    ipsToDelete.forEach(ip => rateLimitMap.delete(ip))
+    if (ipsToDelete.length > 0) {
+      console.log(`[RateLimit] Cleaned ${ipsToDelete.length} expired entries`)
+    }
+  }, 10 * 60 * 1000)
+}
+
 export async function rateLimit(
   ip: string,
   options: { limit: number; windowMs: number }
@@ -55,6 +74,7 @@ export async function rateLimit(
     return distributed
   }
 
+  // Fallback to in-memory (Upstash down or not configured)
   const now = Date.now();
   const record = rateLimitMap.get(ip);
 

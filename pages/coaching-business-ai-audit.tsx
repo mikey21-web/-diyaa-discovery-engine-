@@ -17,10 +17,11 @@ export default function CoachingAIAudit() {
         "Course/program launch engagement drops off because there's no automated nurture",
       ]}
       stats={[
-        { value: '35-45%', label: 'Lead-to-call with AI bot' },
-        { value: '10-15%', label: 'No-show rate with reminders' },
-        { value: '24/7', label: 'Lead qualification with bot' },
+        { value: '35-45%', label: 'Lead-to-call with AI' },
+        { value: '10-15%', label: 'No-show rate' },
+        { value: '24/7', label: 'Availability' },
       ]}
+      industryKey="coaching"
     />
   )
 }

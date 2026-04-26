@@ -3,11 +3,13 @@ import { calculatorToolSchema, calculateLeak } from './calculator'
 import { industryDataToolSchema, lookupIndustryFact, listIndustryFacts } from './industryData'
 import { webSearchToolSchema, researchCompetitor } from './webSearch'
 import { prototypeBuilderToolSchema, buildBotConfigFromModel } from './prototypeBuilder'
+import { competitorDeepScanToolSchema, runDeepScan } from './competitorDeepScan'
 import { BusinessModel } from '../types'
 
 export const ALL_TOOL_SCHEMAS: Tool[] = [
   calculatorToolSchema,
   industryDataToolSchema,
+  competitorDeepScanToolSchema, // Firecrawl-powered — preferred over web_search
   webSearchToolSchema,
   prototypeBuilderToolSchema,
 ]
@@ -18,14 +20,14 @@ export interface ToolResult {
   model_patch?: Partial<BusinessModel>
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function executeTool(toolName: string, input: Record<string, any>, currentModel: BusinessModel): Promise<ToolResult> {
+export async function executeTool(toolName: string, input: Record<string, unknown>, currentModel: BusinessModel): Promise<ToolResult> {
+  const inp = input as Record<string, any>
   switch (toolName) {
     case 'calculator': {
       const result = calculateLeak({
-        description: input.description,
-        frequency_per_week: input.frequency_per_week,
-        cost_per_instance_inr: input.cost_per_instance_inr,
+        description: inp.description as string,
+        frequency_per_week: inp.frequency_per_week as number,
+        cost_per_instance_inr: inp.cost_per_instance_inr as number,
       })
       return {
         tool_name: toolName,
@@ -47,15 +49,32 @@ export async function executeTool(toolName: string, input: Record<string, any>, 
       return { tool_name: toolName, output: fact ?? { error: 'Metric not found', industry, metric } }
     }
 
-    case 'web_search': {
-      const industry = currentModel.identity.industry ?? input.industry ?? 'general'
-      const result = await researchCompetitor(input.competitor_name, industry)
+    case 'competitor_deep_scan': {
+      const industry = (input.industry as string) ?? currentModel.identity.industry ?? 'general'
+      const city = (input.city as string | undefined) ?? currentModel.identity.city ?? undefined
+      const benchmark = (input.benchmark_metric as string | undefined) ?? undefined
+      const result = await runDeepScan(input.competitor_name as string, industry, city, benchmark)
       return {
         tool_name: toolName,
         output: result,
         model_patch: {
           competitors: {
-            names: [input.competitor_name],
+            names: [input.competitor_name as string],
+            xray_findings: [result.finding],
+          },
+        },
+      }
+    }
+
+    case 'web_search': {
+      const industry = currentModel.identity.industry ?? (inp.industry as string) ?? 'general'
+      const result = await researchCompetitor(inp.competitor_name as string, industry)
+      return {
+        tool_name: toolName,
+        output: result,
+        model_patch: {
+          competitors: {
+            names: [inp.competitor_name as string],
             xray_findings: [result.finding],
           },
         },

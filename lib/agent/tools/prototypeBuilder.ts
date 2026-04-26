@@ -139,12 +139,12 @@ function buildFlows(industry: string, businessName: string, model: BusinessModel
 
 function derivePersona(industry: string): string {
   const personas: Record<string, string> = {
-    real_estate: 'Arya - Property Consultant',
-    hospitality: 'Arya - Guest Relations',
-    coaching: 'Arya - Program Advisor',
-    fnb: 'Arya - Restaurant Assistant',
-    healthcare: 'Arya - Patient Care Assistant',
-    default: 'Arya - Business Assistant',
+    real_estate: 'AI Property Consultant',
+    hospitality: 'AI Guest Services',
+    coaching: 'AI Program Advisor',
+    fnb: 'AI Restaurant Assistant',
+    healthcare: 'AI Patient Care Assistant',
+    default: 'AI Business Assistant',
   }
   return personas[normalizeIndustryKey(industry)] ?? personas.default
 }

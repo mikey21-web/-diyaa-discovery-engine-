@@ -42,13 +42,11 @@ const LandingPage: React.FC = () => {
             </div>
             <span className="font-bold text-base tracking-tight text-charcoal">diyaa.ai</span>
           </div>
-          <Link href="/chat">
-            <button
-              className="px-5 py-2 bg-charcoal text-warm-bg text-sm font-semibold rounded-full
-                         hover:bg-charcoal-soft transition-all active:scale-95"
-            >
-              Start Free Audit
-            </button>
+          <Link
+            href="/chat"
+            className="px-5 py-2 bg-charcoal text-warm-bg text-sm font-semibold rounded-full hover:bg-charcoal-soft transition-all active:scale-95"
+          >
+            Start Free Audit
           </Link>
         </div>
       </nav>
@@ -77,15 +75,12 @@ const LandingPage: React.FC = () => {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <Link href="/chat">
-                <button
-                  className="w-full sm:w-auto px-8 py-4 bg-charcoal text-warm-bg font-bold rounded-2xl text-base
-                             hover:bg-charcoal-soft transition-all active:scale-[0.98]
-                             flex items-center justify-center gap-2 group"
-                >
-                  Start Discovery Session
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </button>
+              <Link
+                href="/chat"
+                className="w-full sm:w-auto px-8 py-4 bg-charcoal text-warm-bg font-bold rounded-2xl text-base hover:bg-charcoal-soft transition-all active:scale-[0.98] inline-flex items-center justify-center gap-2 group"
+              >
+                Start Discovery Session
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Link>
             </div>
           </motion.div>
@@ -197,15 +192,12 @@ const LandingPage: React.FC = () => {
               Join 450+ Indian founders who have mapped their AI opportunity.
               Your personalized report is waiting.
             </p>
-            <Link href="/chat">
-              <button
-                className="px-10 py-4 bg-amber text-charcoal font-bold rounded-2xl text-base
-                           hover:bg-amber-hover transition-all active:scale-[0.98]
-                           flex items-center justify-center gap-2 mx-auto group"
-              >
-                Start Free AI Audit
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </button>
+            <Link
+              href="/chat"
+              className="px-10 py-4 bg-amber text-charcoal font-bold rounded-2xl text-base hover:bg-amber-hover transition-all active:scale-[0.98] inline-flex items-center justify-center gap-2 mx-auto group"
+            >
+              Start Free AI Audit
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </Link>
           </div>
         </div>

@@ -1,10 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServiceClient } from '@/lib/supabase'
 import { runAgentTurn } from '@/lib/agent/orchestrator'
-import { AnthropicBusyError } from '@/lib/anthropic'
 import { logger } from '@/lib/logger'
 import type { ChatResponse, ApiError } from '@/lib/types'
-import { processDueJobs } from '@/lib/jobs'
 import { rateLimit, getIP } from '@/lib/rateLimit'
 
 export default async function handler(
@@ -47,7 +45,23 @@ export default async function handler(
       return res.status(410).json({ error: 'Session complete', code: 'SESSION_CLOSED' })
     }
 
-    const result = await runAgentTurn(session_id, message)
+    // Attempt to acquire lock for concurrent requests
+    const now = new Date()
+    const lockThreshold = new Date(now.getTime() - 2 * 60 * 1000).toISOString() // 2 mins ago
+    const { data: lockedSession, error: lockError } = await supabase
+      .from('sessions')
+      .update({ locked_at: now.toISOString() })
+      .eq('id', session_id)
+      .or(`locked_at.is.null,locked_at.lt.${lockThreshold}`)
+      .select('id')
+      .single()
+
+    if (lockError || !lockedSession) {
+      return res.status(409).json({ error: 'Session is currently processing another request', code: 'CONCURRENT_REQUEST' })
+    }
+
+    try {
+      const result = await runAgentTurn(session_id, message)
 
     let reportId: string | undefined
     if (result.report_ready) {
@@ -70,18 +84,25 @@ export default async function handler(
       report_ready: result.report_ready,
       report_id: reportId,
     })
-  } catch (err) {
-    if (err instanceof AnthropicBusyError) {
-      return res.status(503).json({ error: 'AI is busy — please try again in a moment.', code: 'UPSTREAM_BUSY' })
+    } finally {
+      // Release the lock
+      await supabase
+        .from('sessions')
+        .update({ locked_at: null })
+        .eq('id', session_id)
     }
-    const error = err as Error
-    logger.error('Chat error', { msg: error.message, requestId })
-    return res.status(500).json({ error: 'Service Unavailable', code: 'INTERNAL_ERROR' })
+  } catch (err) {
+    const error = err as any
+    if (error.status === 429 || error.status === 402 || error.message?.includes('rate limit')) {
+      return res.status(503).json({ error: 'AI service is busy — please try again in a moment.', code: 'UPSTREAM_BUSY' })
+    }
+    if (error.message?.includes('GROQ_API_KEY') || error.message?.includes('API key') || error.message?.includes('not set')) {
+      logger.error('Missing API key', { requestId })
+      return res.status(500).json({ error: 'Configuration incomplete — GROQ_API_KEY not set. Please add it to .env.local', code: 'CONFIG_ERROR' })
+    }
+    logger.error('Chat error', { msg: error.message, requestId, status: error.status, stack: (err as any)?.stack })
+    return res.status(500).json({ error: error.message || 'Service Unavailable', code: 'INTERNAL_ERROR' })
   } finally {
-    processDueJobs(5).catch((err: unknown) => {
-      const e = err as Error
-      logger.warn('Background job drain failed', { requestId, message: e.message })
-    })
     logger.info('Chat completed', { requestId, durationMs: Date.now() - startedAt })
   }
 }

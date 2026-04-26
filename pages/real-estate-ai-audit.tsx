@@ -21,6 +21,7 @@ export default function RealEstateAIAudit() {
         { value: '₹4.8Cr', label: 'Potential monthly uplift (200 leads)' },
         { value: '2-3%', label: 'Industry avg conversion without AI' },
       ]}
+      industryKey="real_estate"
     />
   )
 }

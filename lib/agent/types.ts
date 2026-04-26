@@ -119,8 +119,14 @@ export interface ReportPayload {
     cta_primary: 'agency_call' | 'saas_signup'
   }
   prototype_id?: string
+  prototype_html_url?: string
   ai_readiness_score: number
   generated_at: string
+  competitor_findings?: {
+    name: string
+    findings: string[]
+    urgency_score: number
+  }[]
 }
 
 export interface AgentTurnResult {

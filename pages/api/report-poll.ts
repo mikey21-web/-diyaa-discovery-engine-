@@ -12,6 +12,7 @@ type SessionPollRow = {
   ai_readiness_score: number | null
   updated_at: string | null
   created_at: string
+  lead_captured: boolean
   leads?: LeadRow[] | LeadRow | null
 }
 
@@ -26,16 +27,27 @@ export default async function handler(
 
   try {
     const supabase = getServiceClient()
-    const { data: sessionData } = await supabase
-      .from('sessions')
-      .select('extracted_data, ai_readiness_score, updated_at, created_at, leads(name)')
-      .eq('id', session_id)
-      .single()
+    const [{ data: sessionData }, { data: reportData }] = await Promise.all([
+      supabase
+        .from('sessions')
+        .select('extracted_data, ai_readiness_score, updated_at, created_at, lead_captured, leads(name)')
+        .eq('id', session_id)
+        .single(),
+      supabase
+        .from('reports')
+        .select('id')
+        .eq('session_id', session_id)
+        .single(),
+    ])
 
     const session = sessionData as SessionPollRow | null
 
     if (!session || !session.extracted_data) {
       return res.status(200).json({ ready: false })
+    }
+
+    if (!session.lead_captured) {
+      return res.status(403).json({ error: 'Lead must be submitted to view the report' })
     }
 
     const extracted = session.extracted_data as ExtractedData
@@ -62,7 +74,7 @@ export default async function handler(
           tier: interpretation.tier,
           description: interpretation.description,
         },
-        reportUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/report/${session_id}`,
+        reportUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/report/${reportData?.id || session_id}`,
         generatedAt: session.updated_at || session.created_at,
       }
     })
