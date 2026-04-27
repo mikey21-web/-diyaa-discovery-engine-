@@ -270,28 +270,28 @@ const ChatPage: React.FC = () => {
       </Head>
 
       {/* Header */}
-      <header className="flex items-center justify-between px-5 h-14 bg-warm-bg border-b border-warm-border shrink-0">
-        <Link 
+      <header className="flex items-center justify-between px-4 sm:px-5 h-12 sm:h-14 bg-warm-bg border-b border-warm-border shrink-0">
+        <Link
           href="/"
           className="p-2 -ml-2 hover:bg-warm-cream rounded-lg transition-colors inline-block"
           aria-label="Go back"
         >
           <ChevronLeft className="w-4 h-4 text-warm-muted" />
         </Link>
-        <div className="flex flex-col items-center">
-          <span className="font-bold text-sm tracking-tight text-charcoal">AI Discovery Session</span>
-          <span className="text-[10px] uppercase tracking-[0.15em] text-amber font-bold">
-            Phase {phase} of 6
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="font-bold text-xs sm:text-sm tracking-tight text-charcoal truncate px-2">Discovery Session</span>
+          <span className="text-[8px] sm:text-[10px] uppercase tracking-[0.12em] text-amber font-bold">
+            Phase {phase}/6
           </span>
         </div>
-        <div className="w-8 h-8 bg-amber-bg border border-amber/20 rounded-full flex items-center justify-center">
+        <div className="w-8 h-8 bg-amber-bg border border-amber/20 rounded-full flex items-center justify-center shrink-0">
           <span className="text-amber font-bold text-xs">D</span>
         </div>
       </header>
 
       {/* Chat Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 scroll-smooth">
-        <div className="max-w-2xl mx-auto space-y-5 pb-16">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 sm:p-5 scroll-smooth">
+        <div className="max-w-2xl mx-auto space-y-3 sm:space-y-5 pb-16">
           {/* Diyaa intro badge */}
           <div className="text-center pb-4">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-warm-cream rounded-full border border-warm-border">
@@ -312,10 +312,10 @@ const ChatPage: React.FC = () => {
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] p-4 text-[15px] leading-relaxed ${
+                  className={`max-w-[85%] sm:max-w-[75%] p-3 sm:p-4 text-sm sm:text-[15px] leading-relaxed ${
                     msg.role === 'user'
-                      ? 'bg-charcoal text-warm-bg rounded-2xl rounded-br-md'
-                      : 'bg-white text-charcoal-mid border border-warm-border rounded-2xl rounded-bl-md'
+                      ? 'bg-charcoal text-warm-bg rounded-xl sm:rounded-2xl rounded-br-none sm:rounded-br-md'
+                      : 'bg-white text-charcoal-mid border border-warm-border rounded-xl sm:rounded-2xl rounded-bl-none sm:rounded-bl-md'
                   }`}
                 >
                   {msg.content}
@@ -357,10 +357,10 @@ const ChatPage: React.FC = () => {
 
       {/* Input Area */}
       {!reportReady && (
-        <div className="p-4 bg-warm-bg border-t border-warm-border shrink-0">
+        <div className="p-3 sm:p-4 bg-warm-bg border-t border-warm-border shrink-0">
           <div className="max-w-2xl mx-auto">
             <div
-              className="flex items-end gap-2 bg-white border border-warm-border rounded-2xl px-4 py-3
+              className="flex items-end gap-2 bg-white border border-warm-border rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2 sm:py-3
                         focus-within:border-amber/50 focus-within:ring-2 focus-within:ring-amber-bg transition-all"
             >
               <textarea
@@ -380,8 +380,8 @@ const ChatPage: React.FC = () => {
                 }}
                 placeholder="Type your answer..."
                 disabled={isLoading}
-                className="w-full bg-transparent outline-none resize-none text-[15px] text-charcoal
-                           placeholder:text-warm-muted disabled:opacity-50 leading-relaxed max-h-[200px] overflow-y-auto py-1"
+                className="w-full bg-transparent outline-none resize-none text-sm sm:text-[15px] text-charcoal
+                           placeholder:text-warm-muted disabled:opacity-50 leading-relaxed max-h-[120px] sm:max-h-[200px] overflow-y-auto py-1"
               />
               <button
                 onClick={handleSend}
@@ -416,18 +416,18 @@ const ChatPage: React.FC = () => {
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
-              className="bg-white rounded-3xl border border-warm-border p-8 max-w-md w-full"
+              className="bg-white rounded-2xl sm:rounded-3xl border border-warm-border p-6 sm:p-8 max-w-md w-full"
               role="dialog"
               aria-modal="true"
               aria-labelledby="modal-title"
               aria-describedby="modal-description"
             >
-              <div className="text-center mb-6">
-                <div className="w-14 h-14 bg-amber-bg border border-amber/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <span className="text-2xl">✦</span>
+              <div className="text-center mb-4 sm:mb-6">
+                <div className="w-12 sm:w-14 h-12 sm:h-14 bg-amber-bg border border-amber/20 rounded-2xl flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                  <span className="text-xl sm:text-2xl">✦</span>
                 </div>
-                <h3 id="modal-title" className="text-xl font-bold text-charcoal mb-1">Your AI Report is Ready</h3>
-                <p id="modal-description" className="text-sm text-warm-muted">
+                <h3 id="modal-title" className="text-lg sm:text-xl font-bold text-charcoal mb-1">Your AI Report is Ready</h3>
+                <p id="modal-description" className="text-xs sm:text-sm text-warm-muted">
                   Where should we send your personalized AI implementation roadmap?
                 </p>
               </div>
