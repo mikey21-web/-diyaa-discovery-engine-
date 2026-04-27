@@ -43,16 +43,16 @@ export default async function handler(
     }
 
     const industryOpenings: Record<string, string> = {
-      real_estate: `Real estate in India moves fast — leads go cold in under an hour if you don't respond. Walk me through what happens the moment a new inquiry hits you.`,
-      hospitality: `In hospitality, the biggest revenue drain is usually no-shows and guests who never come back. What's your biggest operational headache right now?`,
-      fnb: `FnB lives or dies on repeat customers and table turns. What part of your day-to-day still feels like it's on you personally to manage?`,
-      coaching: `Coaches lose 30-40% of booked calls to no-shows — it's the silent killer. How does your current booking and follow-up process work?`,
-      d2c_fashion: `D2C fashion — 90% of mobile carts get abandoned before checkout. What's your current recovery process look like when someone drops off?`,
+      real_estate: `Indian real estate leads go cold in under 7 minutes — most teams respond in 4 hours. Walk me through what happens the moment a new inquiry hits you.`,
+      hospitality: `Hotels lose 25-40% of bookings to no-shows without automated reminders. At your ADR, that's real money every weekend. What's your current confirmation process look like?`,
+      fnb: `70% of first-time restaurant customers never come back without a follow-up. What does your current repeat-customer process look like — or is there one?`,
+      coaching: `30-40% of booked coaching calls are no-shows without WhatsApp reminders. How does a new lead go from DM to paid session in your business right now?`,
+      d2c_fashion: `90% of mobile carts in India are abandoned. WhatsApp recovery converts at 28% vs email's 3%. What's your current process when someone drops off before checkout?`,
     }
 
     const OPENING_MESSAGE = industry && industryOpenings[industry]
-      ? `Hey, I'm Diyaa from diyaa.ai.\n\n${industryOpenings[industry]}`
-      : `Hey, I'm Diyaa from diyaa.ai.\n\nBefore I ask you anything — what's the one part of your business that's costing you the most time or deals right now?`
+      ? industryOpenings[industry]
+      : `What's the one part of your business that costs you the most time or deals right now — getting customers, serving them, or keeping them?`
 
     const { data, error } = await supabase
       .from('sessions')

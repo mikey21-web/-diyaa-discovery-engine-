@@ -1,0 +1,55 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - navigation [ref=e4]:
+      - generic [ref=e5]:
+        - link "d diyaa.ai" [ref=e6] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e7]:
+            - generic [ref=e9]: d
+            - generic [ref=e10]: diyaa.ai
+        - link "Start Free Audit" [ref=e11] [cursor=pointer]:
+          - /url: /chat?industry=real_estate
+    - generic [ref=e14]:
+      - generic [ref=e15]: AI Audit for Real Estate
+      - heading "Your Real Estate Business Is Losing ₹1Cr+ to Slow Lead Response" [level=1] [ref=e16]
+      - paragraph [ref=e17]: Indian property buyers expect a response in under 5 minutes. Most teams take 4+ hours. We map exactly where AI closes that gap — free.
+      - link "Get Your Free AI Audit" [ref=e18] [cursor=pointer]:
+        - /url: /chat?industry=real_estate
+        - text: Get Your Free AI Audit
+        - img [ref=e19]
+    - generic [ref=e22]:
+      - generic [ref=e23]:
+        - paragraph [ref=e24]: 50x
+        - paragraph [ref=e25]: Response time gap vs top performers
+      - generic [ref=e26]:
+        - paragraph [ref=e27]: ₹4.8Cr
+        - paragraph [ref=e28]: Potential monthly uplift (200 leads)
+      - generic [ref=e29]:
+        - paragraph [ref=e30]: 2-3%
+        - paragraph [ref=e31]: Industry avg conversion without AI
+    - generic [ref=e33]:
+      - heading "Common revenue leaks in Real Estate" [level=2] [ref=e34]
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - img [ref=e37]
+          - paragraph [ref=e40]: Leads go cold because your team takes 3-4 hours to respond — top performers respond in 5 minutes
+        - generic [ref=e41]:
+          - img [ref=e42]
+          - paragraph [ref=e45]: Your sales team does 2 follow-ups per lead instead of the 7 that close deals
+        - generic [ref=e46]:
+          - img [ref=e47]
+          - paragraph [ref=e50]: 60-70% of property inquiries come via WhatsApp but you have no automation
+        - generic [ref=e51]:
+          - img [ref=e52]
+          - paragraph [ref=e55]: Manual site visit scheduling wastes 2-3 hours per agent per day
+        - generic [ref=e56]:
+          - img [ref=e57]
+          - paragraph [ref=e60]: No system tracks which leads need follow-up — they fall through the cracks
+    - generic [ref=e63]:
+      - heading "Find out exactly what AI can fix in your real estate business" [level=2] [ref=e64]
+      - paragraph [ref=e65]: 10 minutes. Free. No signup required. Get a branded implementation roadmap.
+      - link "Start Free AI Audit" [ref=e66] [cursor=pointer]:
+        - /url: /chat?industry=real_estate
+    - contentinfo [ref=e67]:
+      - paragraph [ref=e68]: © 2026 diyaa.ai · Built by Uday
+  - alert [ref=e69]

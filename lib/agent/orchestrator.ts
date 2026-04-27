@@ -8,9 +8,10 @@ import { AgentPhase, AgentTurnResult, BusinessModel, ReportPayload } from './typ
 import { createClient } from '@supabase/supabase-js'
 
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
-const MAX_TOOL_ROUNDS = 5
-const RATE_LIMIT_COOLDOWN_MS = 60 * 1000 // 1 minute cooldown per key
-const AGENT_TURN_TIMEOUT_MS = 30 * 1000 // 30 second timeout for entire turn
+const MAX_TOOL_ROUNDS = 3
+const RATE_LIMIT_COOLDOWN_MS = 60 * 1000
+const AGENT_TURN_TIMEOUT_MS = 30 * 1000
+const HISTORY_WINDOW = 10 // max conversation turns sent to model (older turns pruned)
 
 // Track rate-limited keys with expiry
 const rateLimitedKeys = new Map<string, number>()
@@ -139,12 +140,19 @@ async function runAgentTurnInternal(
     { role: 'user', content: userMessage },
   ]
 
+  // Cap history sent to model — Llama degrades past ~8K tokens of conversation
+  const cappedHistory = updatedHistory.length > HISTORY_WINDOW * 2
+    ? updatedHistory.slice(-(HISTORY_WINDOW * 2))
+    : updatedHistory
+
   const systemPrompt = buildDiagnosticSystemPrompt(model, phase)
+  // Injected at end of messages — Llama pays attention to start AND end
+  const tailReminder = 'REMINDER: ONE question only in your response. Start with a diagnosis or ₹/% figure, never a greeting. 4 sentences max.'
   const toolCallsMade: string[] = []
   let currentModel = { ...model }
 
   const { client, key: groqKey } = getGroqClientWithKey()
-  let loopHistory = [...updatedHistory]
+  let loopHistory = [...cappedHistory]
   let finalReply = ''
   let reportReady = false
   let salesPhaseTriggered = false
@@ -159,12 +167,15 @@ async function runAgentTurnInternal(
           role: msg.role as 'user' | 'assistant' | 'system',
           content: msg.content,
         })),
+        { role: 'system' as const, content: tailReminder },
       ]
 
       const groqStart = Date.now()
       const response = await client.chat.completions.create({
         model: GROQ_MODEL,
-        max_tokens: 1024,
+        max_tokens: 512,
+        temperature: 0.3,
+        top_p: 0.9,
         tools: convertToolsForGroq(ALL_TOOL_SCHEMAS),
         tool_choice: 'auto',
         messages: messages as any,
@@ -381,6 +392,8 @@ async function runGroqSynthesis(sessionId: string, model: BusinessModel): Promis
     response = await client.chat.completions.create({
       model: GROQ_MODEL,
       max_tokens: 4000,
+      temperature: 0.1,
+      top_p: 0.9,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: 'Generate the complete ReportPayload JSON now.' },
