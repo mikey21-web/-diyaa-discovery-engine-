@@ -1,4 +1,0 @@
-[    1062ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ webpack-internal:///./node_modules/react-dom/cjs/react-dom.development.js:29889
-[    1269ms] [LOG] [HMR] connected @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:45
-[    1296ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3111/favicon.ico:0
-[   14025ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3111/api/chat:0
