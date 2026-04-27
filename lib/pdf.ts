@@ -45,7 +45,7 @@ export function generateReportHTML(
     month: 'long',
     year: 'numeric',
   })
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://diyaaaa.in'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://diyaa-ai-engine.vercel.app'
   const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '918074228036'
   const calLink = process.env.NEXT_PUBLIC_CAL_LINK || '#'
 
