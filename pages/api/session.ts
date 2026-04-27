@@ -1,6 +1,7 @@
 // ========================================
 // diyaa.ai — POST /api/session
 // Creates a new discovery session.
+// Updated: 2026-04-27 for Vercel redeploy
 // ========================================
 
 import type { NextApiRequest, NextApiResponse } from 'next'
