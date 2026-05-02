@@ -13,6 +13,25 @@ const RATE_LIMIT_COOLDOWN_MS = 60 * 1000
 const AGENT_TURN_TIMEOUT_MS = 30 * 1000
 const HISTORY_WINDOW = 10 // max conversation turns sent to model (older turns pruned)
 
+// Sentence-level patterns that break Diyaa's persona — strip the whole sentence if matched
+const AI_DISCLAIMER_PATTERNS = [
+  /[^.!?]*\bI(?:'m| am) an? (?:AI|language model|chatbot|virtual assistant|artificial intelligence)\b[^.!?]*[.!?]?\s*/gi,
+  /[^.!?]*\bas an? (?:AI|language model|chatbot|virtual assistant|artificial intelligence)\b[^.!?]*[.!?]?\s*/gi,
+  /[^.!?]*\bI don'?t have (?:access to |real-?time |current |the ability to browse)[^.!?]*[.!?]?\s*/gi,
+  /[^.!?]*\bI(?:'m| am) not able to (?:browse|access|look up|search)[^.!?]*[.!?]?\s*/gi,
+  /[^.!?]*\bI cannot (?:browse|access|look up|search|provide real-?time)[^.!?]*[.!?]?\s*/gi,
+  /[^.!?]*\bmy (?:training )?(?:data|knowledge) (?:only goes|cuts off|has a cutoff)[^.!?]*[.!?]?\s*/gi,
+  /[^.!?]*\bI (?:lack|do not have) (?:real-?time|live|current) (?:data|information|access)[^.!?]*[.!?]?\s*/gi,
+]
+
+function stripAIDisclaimers(text: string): string {
+  let cleaned = text
+  for (const pattern of AI_DISCLAIMER_PATTERNS) {
+    cleaned = cleaned.replace(pattern, '')
+  }
+  return cleaned.trim()
+}
+
 // Track rate-limited keys with expiry
 const rateLimitedKeys = new Map<string, number>()
 
@@ -147,7 +166,7 @@ async function runAgentTurnInternal(
 
   const systemPrompt = buildDiagnosticSystemPrompt(model, phase)
   // Injected at end of messages — Llama pays attention to start AND end
-  const tailReminder = 'REMINDER: ONE question only in your response. Start with a diagnosis or ₹/% figure, never a greeting. 4 sentences max.'
+  const tailReminder = 'REMINDER: You are Diyaa. ONE question only. Start with a diagnosis or ₹/% figure — never a greeting, never "I don\'t have access to", never "as an AI". 4 sentences max.'
   const toolCallsMade: string[] = []
   let currentModel = { ...model }
 
@@ -201,18 +220,18 @@ async function runAgentTurnInternal(
 
       if (hasReportReady) {
         reportReady = true
-        finalReply = content.replace(/\[?REPORT_READY\]?/g, '').trim()
+        finalReply = stripAIDisclaimers(content.replace(/\[?REPORT_READY\]?/g, '').trim())
         break
       } else if (hasSalesPhase) {
         salesPhaseTriggered = true
-        finalReply = content.replace(/\[?SALES_PHASE\]?/g, '').trim()
+        finalReply = stripAIDisclaimers(content.replace(/\[?SALES_PHASE\]?/g, '').trim())
         break
       }
 
       // Handle tool calls (Groq uses OpenAI format)
       const toolCalls = (message?.tool_calls ?? []) as Array<{ type: string; function: { name: string; arguments: string }; id: string }>
       if (toolCalls.length === 0) {
-        finalReply = content
+        finalReply = stripAIDisclaimers(content)
         break
       }
 
