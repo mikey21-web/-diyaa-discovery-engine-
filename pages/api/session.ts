@@ -44,16 +44,16 @@ export default async function handler(
     }
 
     const industryOpenings: Record<string, string> = {
-      real_estate: `In real estate, response speed often decides who closes the deal. Walk me through what happens the moment a new inquiry hits your team.`,
-      hospitality: `In hospitality, no-shows and slow confirmations can quietly hurt margins. What does your booking confirmation process look like right now?`,
-      fnb: `In F&B, repeat orders usually decide long-term growth. What does your current repeat-customer process look like today?`,
-      coaching: `In coaching, no-shows and slow follow-up can break conversion. How does a new lead move from first message to paid session in your business?`,
-      d2c_fashion: `In D2C fashion, drop-offs often happen between cart and checkout. What is your current process when someone abandons cart?`,
+      real_estate: `I'm Diyaa, a revenue consultant at diyaa.ai. In real estate, response speed often decides who closes the deal. Walk me through what happens the moment a new inquiry hits your team.`,
+      hospitality: `I'm Diyaa, a revenue consultant at diyaa.ai. In hospitality, no-shows and slow confirmations can quietly hurt margins. What does your booking confirmation process look like right now?`,
+      fnb: `I'm Diyaa, a revenue consultant at diyaa.ai. In F&B, repeat orders usually decide long-term growth. What does your current repeat-customer process look like today?`,
+      coaching: `I'm Diyaa, a revenue consultant at diyaa.ai. In coaching, no-shows and slow follow-up can break conversion. How does a new lead move from first message to paid session in your business?`,
+      d2c_fashion: `I'm Diyaa, a revenue consultant at diyaa.ai. In D2C fashion, drop-offs often happen between cart and checkout. What is your current process when someone abandons cart?`,
     }
 
     const OPENING_MESSAGE = industry && industryOpenings[industry]
       ? industryOpenings[industry]
-      : `What's the one part of your business that costs you the most time or deals right now — getting customers, serving them, or keeping them?`
+      : `I'm Diyaa, a revenue consultant at diyaa.ai. What's the one part of your business that costs you the most time or deals right now — getting customers, serving them, or keeping them?`
 
     const { data, error } = await supabase
       .from('sessions')
