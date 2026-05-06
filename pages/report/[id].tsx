@@ -246,7 +246,7 @@ export default function ReportPage() {
                   {business_model.leaks.filter(l => l.source_quote).map((leak, i) => (
                     <div key={i} className="bg-blue-50 border border-blue-100 rounded-lg p-4">
                       <p className="text-xs font-bold text-blue-900 mb-2">{leak.description}</p>
-                      <p className="text-sm text-blue-900 italic">"{leak.source_quote}"</p>
+                      <p className="text-sm text-blue-900 italic">&quot;{leak.source_quote}&quot;</p>
                       {leak.evidence_summary && <p className="text-xs text-blue-700 mt-2">→ {leak.evidence_summary}</p>}
                     </div>
                   ))}
@@ -266,7 +266,7 @@ export default function ReportPage() {
                   <p className="text-sm font-bold text-zinc-900">{d.hypothesis} · {Math.round(d.confidence * 100)}% confidence</p>
                   {d.source_quote && (
                     <div className="mt-3 pl-4 border-l-2 border-amber-300 bg-amber-50 py-2">
-                      <p className="text-sm italic text-amber-900">"{d.source_quote}"</p>
+                      <p className="text-sm italic text-amber-900">&quot;{d.source_quote}&quot;</p>
                       {d.quote_context && <p className="text-xs text-amber-700 mt-1">Context: {d.quote_context}</p>}
                     </div>
                   )}
