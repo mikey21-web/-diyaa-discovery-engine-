@@ -3,7 +3,7 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronLeft, Loader2, Shield, ArrowRight } from 'lucide-react'
+import { Send, ChevronLeft, Loader2, Shield, ArrowRight, Mic, Square } from 'lucide-react'
 
 interface Message {
   id: string
@@ -33,9 +33,35 @@ const ChatPage: React.FC = () => {
   const [leadSubmitting, setLeadSubmitting] = useState(false)
   const [leadSubmitted, setLeadSubmitted] = useState(false)
   const [seedSent, setSeedSent] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [micSupported, setMicSupported] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const recognitionRef = useRef<any>(null)
   const safeId = () => Math.random().toString(36).substring(2, 15)
+
+  useEffect(() => {
+    const SpeechRecognition = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null
+    if (!SpeechRecognition) {
+      setMicSupported(false)
+      return
+    }
+    recognitionRef.current = new SpeechRecognition()
+    recognitionRef.current.continuous = false
+    recognitionRef.current.interimResults = false
+    recognitionRef.current.lang = 'en-IN'
+    recognitionRef.current.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join('')
+      if (transcript.trim()) {
+        setInput(transcript.trim())
+      }
+      setIsRecording(false)
+    }
+    recognitionRef.current.onerror = () => setIsRecording(false)
+    recognitionRef.current.onend = () => setIsRecording(false)
+  }, [])
 
   const getSeedMessage = useCallback((): string | null => {
     const industryKey = typeof industry === 'string' ? industry : null
@@ -201,6 +227,17 @@ const ChatPage: React.FC = () => {
     }, 800)
     return () => clearTimeout(timer)
   }, [getSeedMessage, isLoading, messages.length, seedSent, sendMessage, sessionId])
+
+  const toggleVoiceInput = () => {
+    if (!recognitionRef.current) return
+    if (isRecording) {
+      recognitionRef.current.stop()
+      setIsRecording(false)
+    } else {
+      setIsRecording(true)
+      recognitionRef.current.start()
+    }
+  }
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return
@@ -374,11 +411,23 @@ const ChatPage: React.FC = () => {
                     handleSend()
                   }
                 }}
-                placeholder="Type your answer..."
+                placeholder={isRecording ? "Listening..." : "Type or speak..."}
                 disabled={isLoading}
                 className="w-full bg-transparent outline-none resize-none text-sm sm:text-[15px] text-charcoal
                            placeholder:text-warm-muted disabled:opacity-50 leading-relaxed max-h-[120px] sm:max-h-[200px] overflow-y-auto py-1"
               />
+              {micSupported && (
+                <button
+                  onClick={toggleVoiceInput}
+                  disabled={isLoading}
+                  aria-label="Voice input"
+                  className={`p-2 transition-colors shrink-0 ${
+                    isRecording ? 'text-red-500' : 'text-warm-muted hover:text-amber'
+                  } disabled:opacity-50`}
+                >
+                  {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+              )}
               <button
                 onClick={handleSend}
                 disabled={!input.trim() || isLoading}
