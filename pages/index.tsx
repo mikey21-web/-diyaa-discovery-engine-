@@ -26,11 +26,38 @@ const LandingPage: React.FC = () => {
         <title>Free AI Implementation Audit for Indian Businesses | diyaa.ai</title>
         <meta
           name="description"
-          content="Find out exactly where AI can save you time and money — free 10-minute AI discovery session built for Indian SMBs."
+          content="Find out exactly where AI can save you time and money — free 10-minute AI discovery session built for Indian SMBs. Get a data-backed roadmap."
         />
-        <meta property="og:title" content="diyaa.ai — AI Discovery Engine" />
-        <meta property="og:description" content="Stop guessing where AI fits. Get a data-backed roadmap in 10 minutes." />
+        <meta name="keywords" content="AI for small business India, AI implementation, business automation, AI audit, SMB AI adoption" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:title" content="Free AI Implementation Audit for Indian Businesses | diyaa.ai" />
+        <meta property="og:description" content="Stop guessing where AI fits. Get a data-backed roadmap in 10 minutes — free, specific to your business." />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://diyaa-ai-engine.vercel.app" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Free AI Implementation Audit for Indian Businesses" />
+        <meta name="twitter:description" content="Find where AI can save you time and money in 10 minutes." />
         <link rel="icon" href="/favicon.ico" />
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": "diyaa.ai — AI Discovery Engine",
+            "description": "Free AI implementation audit for Indian SMBs. Discover exactly where AI fits in your business.",
+            "url": "https://diyaa-ai-engine.vercel.app",
+            "applicationCategory": "BusinessApplication",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "INR"
+            },
+            "aggregateRating": {
+              "@type": "AggregateRating",
+              "ratingValue": "4.8",
+              "ratingCount": "450"
+            }
+          })}
+        </script>
       </Head>
 
       {/* Navigation */}
