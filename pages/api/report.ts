@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServiceClient } from '@/lib/supabase'
 import { logger } from '@/lib/logger'
 import { getBaseUrl } from '@/lib/utils'
+import { rateLimit, getIP } from '@/lib/rateLimit'
 import type { ApiError } from '@/lib/types'
 import type { ReportPayload } from '@/lib/agent/types'
 
@@ -17,6 +18,15 @@ export default async function handler(
 ) {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' })
+  }
+
+  // Rate limit POST (report generation) - 5 per IP per hour
+  if (req.method === 'POST') {
+    const ip = getIP(req)
+    const { allowed } = await rateLimit(ip, { limit: 5, windowMs: 60 * 60 * 1000 })
+    if (!allowed) {
+      return res.status(429).json({ error: 'Too many report requests. Please try again later.', code: 'RATE_LIMIT_EXCEEDED' })
+    }
   }
 
   const sessionOrReportId = req.method === 'POST'

@@ -1,106 +1,62 @@
-import type { NextApiRequest } from 'next'
+// Simple in-memory rate limiter
+// Stores IP/session -> request count + reset time
+// Auto-cleans expired entries every 5 minutes
 
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-type RateLimitResult = { allowed: boolean; remaining: number }
-
-const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL
-const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
-
-async function rateLimitWithUpstash(
-  key: string,
-  options: { limit: number; windowMs: number }
-): Promise<RateLimitResult | null> {
-  if (!UPSTASH_URL || !UPSTASH_TOKEN) return null
-
-  const endpoint = `${UPSTASH_URL}/pipeline`
-  const commands = [
-    ['INCR', key],
-    ['PEXPIRE', key, options.windowMs, 'NX'],
-  ]
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${UPSTASH_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(commands),
-  })
-
-  if (!response.ok) {
-    return null
-  }
-
-  const payload = (await response.json()) as Array<{ result?: number }>
-  const count = Number(payload?.[0]?.result || 0)
-
-  if (!count) return null
-
-  if (count > options.limit) {
-    return { allowed: false, remaining: 0 }
-  }
-
-  return { allowed: true, remaining: options.limit - count }
+interface RateLimitEntry {
+  count: number
+  resetAt: number
 }
 
-// Cleanup stale entries every 10 minutes
-if (typeof globalThis !== 'undefined' && !('_rateLimitCleanupScheduled' in globalThis)) {
-  (globalThis as any)._rateLimitCleanupScheduled = true
-  setInterval(() => {
-    const now = Date.now()
-    let cleaned = 0
-    const ipsToDelete: string[] = []
-    rateLimitMap.forEach((record, ip) => {
-      if (now > record.resetAt) {
-        ipsToDelete.push(ip)
-      }
-    })
-    ipsToDelete.forEach(ip => rateLimitMap.delete(ip))
-    if (ipsToDelete.length > 0) {
-      console.log(`[RateLimit] Cleaned ${ipsToDelete.length} expired entries`)
+const store = new Map<string, RateLimitEntry>()
+
+// Cleanup expired entries every 5 minutes
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, entry] of store.entries()) {
+    if (entry.resetAt < now) {
+      store.delete(key)
     }
-  }, 10 * 60 * 1000)
+  }
+}, 5 * 60 * 1000)
+
+export function getIP(req: any): string {
+  return (
+    req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+    req.headers['x-real-ip'] ||
+    req.socket?.remoteAddress ||
+    'unknown'
+  )
 }
 
 export async function rateLimit(
-  ip: string,
+  identifier: string,
   options: { limit: number; windowMs: number }
-): Promise<RateLimitResult> {
-  const upstashKey = `ratelimit:${ip}:${options.windowMs}`
-  const distributed = await rateLimitWithUpstash(upstashKey, options)
+): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
+  const now = Date.now()
+  const entry = store.get(identifier)
 
-  if (distributed) {
-    return distributed
+  if (!entry || entry.resetAt < now) {
+    // New window
+    store.set(identifier, {
+      count: 1,
+      resetAt: now + options.windowMs,
+    })
+    return {
+      allowed: true,
+      remaining: options.limit - 1,
+      resetAt: now + options.windowMs,
+    }
   }
 
-  // Fallback to in-memory (Upstash down or not configured)
-  const now = Date.now();
-  const record = rateLimitMap.get(ip);
-
-  if (!record || now > record.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + options.windowMs });
-    return { allowed: true, remaining: options.limit - 1 };
+  // Within window
+  const allowed = entry.count < options.limit
+  if (allowed) {
+    entry.count++
   }
 
-  if (record.count >= options.limit) {
-    return { allowed: false, remaining: 0 };
+  return {
+    allowed,
+    remaining: Math.max(0, options.limit - entry.count),
+    resetAt: entry.resetAt,
   }
-
-  record.count++;
-  return { allowed: true, remaining: options.limit - record.count };
-}
-
-export function getIP(req: NextApiRequest): string {
-  const forwardedFor = req.headers['x-forwarded-for']
-  const forwarded = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor
-  const realIp = req.headers['x-real-ip']
-  const real = Array.isArray(realIp) ? realIp[0] : realIp
-
-  return (
-    forwarded?.split(',')[0]?.trim() ||
-    real ||
-    req.socket?.remoteAddress ||
-    'unknown'
-  );
 }

@@ -8,7 +8,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServiceClient } from '@/lib/supabase'
 import { logger } from '@/lib/logger'
 import { seedBusinessModel } from '@/lib/agent/businessModel'
-// import { rateLimit, getIP } from '@/lib/rateLimit'
+import { rateLimit, getIP } from '@/lib/rateLimit'
 import type { CreateSessionResponse, ApiError } from '@/lib/types'
 
 export default async function handler(
@@ -23,12 +23,12 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' })
   }
 
-  // Session rate limit disabled for now - remove if you want to enable
-  // const ip = getIP(req)
-  // const { allowed } = await rateLimit(ip, { limit: 60, windowMs: 60 * 60 * 1000 })
-  // if (!allowed) {
-  //   return res.status(429).json({ error: 'Too many sessions. Please try again later.', code: 'RATE_LIMIT_EXCEEDED' })
-  // }
+  // Rate limit: 10 new sessions per IP per hour
+  const ip = getIP(req)
+  const { allowed } = await rateLimit(ip, { limit: 10, windowMs: 60 * 60 * 1000 })
+  if (!allowed) {
+    return res.status(429).json({ error: 'Too many sessions. Please try again later.', code: 'RATE_LIMIT_EXCEEDED' })
+  }
 
   try {
     const supabase = getServiceClient()
