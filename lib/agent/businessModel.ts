@@ -58,6 +58,12 @@ export function mergeModel(base: BusinessModel, patch: Partial<BusinessModel>): 
     if (patch.ai_readiness.budget_signal) merged.ai_readiness.budget_signal = patch.ai_readiness.budget_signal
   }
   if (patch.hypotheses?.length) merged.hypotheses = [...merged.hypotheses, ...patch.hypotheses]
+  if (patch.diagnoses?.length) merged.diagnoses = [...merged.diagnoses, ...patch.diagnoses]
+  if (patch.actions?.length) merged.actions = [...merged.actions, ...patch.actions]
+  if (patch.channel_mix) merged.channel_mix = { ...(merged.channel_mix ?? {}), ...patch.channel_mix }
+  if (patch.stage_metrics) merged.stage_metrics = { ...(merged.stage_metrics ?? {}), ...patch.stage_metrics }
+  if (patch.owner_by_step) merged.owner_by_step = { ...(merged.owner_by_step ?? {}), ...patch.owner_by_step }
+  if (patch.constraints?.length) merged.constraints = dedup([...(merged.constraints ?? []), ...patch.constraints])
 
   merged.completeness_score = scoreCompleteness(merged)
   return merged
@@ -77,33 +83,43 @@ export async function seedBusinessModel(sessionId: string, industry: string): Pr
 export function scoreCompleteness(model: BusinessModel): number {
   let score = 0
 
-  // Identity (25 pts)
-  if (model.identity.name) score += 5
-  if (model.identity.industry) score += 8
-  if (model.identity.city) score += 4
-  if (model.identity.team_size) score += 4
-  if (model.identity.years) score += 4
+  // Identity (15 pts) — name and years are nice-to-have, not diagnostic
+  if (model.identity.industry) score += 7
+  if (model.identity.city) score += 3
+  if (model.identity.team_size) score += 3
+  if (model.identity.name) score += 1
+  if (model.identity.years) score += 1
 
-  // Revenue (20 pts)
-  if (model.revenue.monthly_inr) score += 12
-  if (model.revenue.avg_ticket_inr) score += 8
+  // Revenue (15 pts) — avg ticket is more diagnostic than monthly revenue
+  if (model.revenue.avg_ticket_inr) score += 10
+  if (model.revenue.monthly_inr) score += 5
 
-  // Workflow (20 pts)
+  // Workflow (20 pts) — lead source + process steps matter most
   if (model.workflow.lead_source.length >= 1) score += 7
   if (model.workflow.process_steps.length >= 2) score += 7
   if (model.workflow.bottlenecks.length >= 1) score += 6
 
-  // Leaks (20 pts)
+  // Stage metrics (15 pts) — these are the real diagnostic evidence
+  const sm = model.stage_metrics ?? {}
+  const smKeys = Object.keys(sm).length
+  if (smKeys >= 1) score += 5
+  if (smKeys >= 2) score += 5
+  if (smKeys >= 3) score += 5
+
+  // Leaks quantified (20 pts) — the actual output of a good diagnostic
   if (model.leaks.length >= 1) score += 8
   if (model.leaks.length >= 2) score += 7
   if (model.leaks.length >= 3) score += 5
 
-  // AI readiness (10 pts)
-  if (model.ai_readiness.tech_comfort !== 'low') score += 5
-  if (model.ai_readiness.tools.length >= 1) score += 5
+  // Operating context (10 pts)
+  if (model.ai_readiness.tools.length >= 1) score += 4
+  if (model.owner_by_step && Object.keys(model.owner_by_step).length > 0) score += 4
+  if (model.ai_readiness.tech_comfort !== 'low') score += 2
 
-  // Competitors (5 pts)
-  if (model.competitors.names.length >= 1) score += 5
+  // Intelligence layer (5 pts)
+  if (model.competitors.names.length >= 1) score += 2
+  if (model.diagnoses.length >= 1) score += 2
+  if (model.actions.length >= 1) score += 1
 
   return Math.min(100, score)
 }

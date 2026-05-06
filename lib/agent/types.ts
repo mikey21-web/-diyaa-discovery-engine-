@@ -7,6 +7,37 @@ export type AgentPhase =
   | 'complete'
 
 export type ConfidenceLevel = 'stated' | 'calculated' | 'inferred'
+export type HypothesisType =
+  | 'lead_response'
+  | 'no_show'
+  | 'follow_up'
+  | 'stage_conversion'
+  | 'payment_dropoff'
+  | 'fulfillment_delay'
+
+export interface EvidenceItem {
+  fact: string
+  source: 'conversation' | 'events' | 'tool'
+  timestamp: string
+  strength: number // 0..1
+}
+
+export interface Diagnosis {
+  hypothesis: HypothesisType
+  confidence: number // 0..1
+  evidence: EvidenceItem[]
+  unknowns: string[]
+  disprovers: string[]
+  source_quote?: string // direct quote from founder that triggered this diagnosis
+  quote_context?: string // surrounding context (e.g., "response_time")
+}
+
+export interface ActionRecommendation {
+  action_id: 'sla_nudge_whatsapp' | 'no_show_reminder_flow' | 'lost_lead_reactivation'
+  expected_impact_inr: number
+  time_to_value_days: number
+  risk: 'low' | 'medium' | 'high'
+}
 
 export interface RevenueLeak {
   description: string
@@ -14,6 +45,8 @@ export interface RevenueLeak {
   cost_per_instance_inr: number
   annual_leak_inr: number
   confidence: ConfidenceLevel
+  source_quote?: string // exact conversation moment that revealed this leak
+  evidence_summary?: string // how we calculated it
 }
 
 export interface Hypothesis {
@@ -60,6 +93,12 @@ export interface BusinessModel {
     budget_signal: 'low' | 'medium' | 'high'
   }
   hypotheses: Hypothesis[]
+  diagnoses: Diagnosis[]
+  actions: ActionRecommendation[]
+  channel_mix?: Record<string, number>
+  stage_metrics?: Record<string, number>
+  owner_by_step?: Record<string, string>
+  constraints?: string[]
   completeness_score: number
 }
 
@@ -71,6 +110,8 @@ export const EMPTY_BUSINESS_MODEL: BusinessModel = {
   competitors: { names: [], xray_findings: [] },
   ai_readiness: { tools: [], tech_comfort: 'low', budget_signal: 'low' },
   hypotheses: [],
+  diagnoses: [],
+  actions: [],
   completeness_score: 0,
 }
 

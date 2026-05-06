@@ -44,11 +44,11 @@ export default async function handler(
     }
 
     const industryOpenings: Record<string, string> = {
-      real_estate: `Indian real estate leads go cold in under 7 minutes — most teams respond in 4 hours. Walk me through what happens the moment a new inquiry hits you.`,
-      hospitality: `Hotels lose 25-40% of bookings to no-shows without automated reminders. At your ADR, that's real money every weekend. What's your current confirmation process look like?`,
-      fnb: `70% of first-time restaurant customers never come back without a follow-up. What does your current repeat-customer process look like — or is there one?`,
-      coaching: `30-40% of booked coaching calls are no-shows without WhatsApp reminders. How does a new lead go from DM to paid session in your business right now?`,
-      d2c_fashion: `90% of mobile carts in India are abandoned. WhatsApp recovery converts at 28% vs email's 3%. What's your current process when someone drops off before checkout?`,
+      real_estate: `In real estate, response speed often decides who closes the deal. Walk me through what happens the moment a new inquiry hits your team.`,
+      hospitality: `In hospitality, no-shows and slow confirmations can quietly hurt margins. What does your booking confirmation process look like right now?`,
+      fnb: `In F&B, repeat orders usually decide long-term growth. What does your current repeat-customer process look like today?`,
+      coaching: `In coaching, no-shows and slow follow-up can break conversion. How does a new lead move from first message to paid session in your business?`,
+      d2c_fashion: `In D2C fashion, drop-offs often happen between cart and checkout. What is your current process when someone abandons cart?`,
     }
 
     const OPENING_MESSAGE = industry && industryOpenings[industry]

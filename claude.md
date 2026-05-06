@@ -27,7 +27,7 @@ This product removes that barrier. diyaa.ai captures the intent.
 | PDF | Puppeteer + custom HTML template | Branded, pixel-perfect output |
 | Auth | None (public tool, email capture at end) | Zero friction for lead gen |
 | Deploy | Vercel | Instant, free tier handles early traffic |
-| CTA | WhatsApp deep link (+918074228036) + Cal.com | Direct to Uday |
+| CTA | Email + Cal.com | Direct to Uday |
 
 ---
 
@@ -47,7 +47,7 @@ This product removes that barrier. diyaa.ai captures the intent.
     session.ts             create/get session
     chat.ts                conversation turn handler
     report.ts              trigger report generation
-    lead.ts                capture email/WhatsApp after session
+    lead.ts                capture email after session
   components/
     Chat/
     Report/
@@ -356,7 +356,7 @@ Example: "Based on what you've shared, the fastest ROI is a WhatsApp automation 
 
 CTA buttons:
 1. Book a Call — Cal.com link
-2. WhatsApp Uday — wa.me/918074228036
+2. Email Uday — reply to email
 3. Share This Report — copy shareable URL
 
 ---
@@ -461,9 +461,9 @@ Triggers PDF generation from extracted session data.
 ```
 
 ### POST /api/lead
-Captures lead after session completes.
+Captures lead after session completes. Email-only approach.
 ```typescript
-// Request: { session_id: string, name: string, email?: string, whatsapp?: string }
+// Request: { session_id: string, name: string, email: string }
 // Response: { success: boolean }
 ```
 
@@ -515,22 +515,21 @@ create table leads (
 ## Lead Capture Strategy
 
 ### Timing
-Gate the full report behind WhatsApp/email capture. NOT during session, after.
+Gate the full report behind email capture. NOT during session, after.
 After [REPORT_READY] signal shows in UI: "Your AI Implementation Report is ready. Where should we send it?"
 
 ### Fields
 - Name (required)
-- WhatsApp number (required, pre-fill with +91)
-- Email (optional)
+- Email (required)
 
 ### Post-capture automation via n8n (n8n.diyaaaa.in)
 1. Lead stored in Supabase
 2. n8n webhook triggers from /api/lead
-3. WhatsApp sent via Evolution API: "Hey [name], your AI blueprint is ready. [link]"
+3. Email sent via Gmail: "Your AI Implementation Roadmap is ready. [link]"
 4. Wait 24 hours
 5. Check if report was opened (view_count > 0 in Supabase)
-6. If opened: "Did you get a chance to look at your AI blueprint? Happy to walk you through it."
-7. If not opened: "Just following up — your free AI audit is still waiting: [link]"
+6. If opened: "Did you get a chance to look at your roadmap? Happy to walk you through the priority actions."
+7. If not opened: "Just following up — your personalized AI roadmap is ready here: [link]"
 8. Log to Google Sheets for manual CRM tracking
 
 n8n version: 2.9.2

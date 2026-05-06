@@ -4,7 +4,6 @@ import { logger } from './logger'
 interface LeadEmailData {
   name: string
   email?: string
-  whatsapp?: string | null
   industry?: string | null
   ai_readiness_score?: number | null
   report_url?: string | null
@@ -54,12 +53,10 @@ export async function sendLeadEmail(leadData: LeadEmailData) {
 
   const safeName = escapeHtml(leadData.name)
   const safeEmail = escapeHtml(leadData.email || 'N/A')
-  const safeWhatsapp = escapeHtml(leadData.whatsapp || 'N/A')
   const safeIndustry = escapeHtml(leadData.industry || 'Unknown')
   const safeReportUrl = escapeHtml(leadData.report_url || '')
 
   try {
-    // 1. Alert for you (Admin)
     await transporter.sendMail({
       from: `"diyaa.ai Engine" <${process.env.GMAIL_USER}>`,
       to: ADMIN_EMAIL,
@@ -68,7 +65,6 @@ export async function sendLeadEmail(leadData: LeadEmailData) {
         <h2>New Discovery Session Completed!</h2>
         <p><strong>Name:</strong> ${safeName}</p>
         <p><strong>Email:</strong> ${safeEmail}</p>
-        <p><strong>WhatsApp:</strong> ${safeWhatsapp}</p>
         <p><strong>Industry:</strong> ${safeIndustry}</p>
         <p><strong>AI Readiness Score:</strong> ${leadData.ai_readiness_score || 'N/A'} / 10</p>
         <br />
@@ -77,7 +73,6 @@ export async function sendLeadEmail(leadData: LeadEmailData) {
     })
     logger.info('Admin email sent for new lead via Gmail.')
 
-    // 2. Report sent directly to the Lead (if they provided email)
     if (leadData.email) {
       await transporter.sendMail({
         from: `"Diyaa from diyaa.ai" <${process.env.GMAIL_USER}>`,
@@ -125,9 +120,9 @@ export async function sendErrorAlert(errorDetails: {
     await transporter.sendMail({
       from: `"diyaa.ai Monitor" <${process.env.GMAIL_USER}>`,
       to: ADMIN_EMAIL,
-      subject: `🚨 CRITICAL: Groq API Error - ${errorDetails.allKeysExhausted ? 'ALL KEYS EXHAUSTED' : 'Key Failed'}`,
+      subject: `🚨 CRITICAL: OpenAI API Error - ${errorDetails.allKeysExhausted ? 'ALL KEYS EXHAUSTED' : 'Key Failed'}`,
       html: `
-        <h2>Groq API Issue Detected</h2>
+        <h2>OpenAI API Issue Detected</h2>
         <p><strong>Error:</strong> ${safeError}</p>
         <p><strong>Status:</strong> ${errorDetails.status || 'N/A'}</p>
         <p><strong>Key Index:</strong> ${errorDetails.keyIndex}</p>

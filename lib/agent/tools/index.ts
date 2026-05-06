@@ -1,12 +1,14 @@
 import type { Tool } from '@anthropic-ai/sdk/resources/messages'
 import { calculatorToolSchema, calculateLeak } from './calculator'
-import { industryDataToolSchema, lookupIndustryFact, listIndustryFacts } from './industryData'
+import { industryDataToolSchema, lookupIndustryFact, listIndustryFacts, computeBenchmarkDelta } from './industryData'
 import { webSearchToolSchema, researchCompetitor } from './webSearch'
 import { prototypeBuilderToolSchema, buildBotConfigFromModel } from './prototypeBuilder'
 import { competitorDeepScanToolSchema, runDeepScan } from './competitorDeepScan'
+import { updateModelToolSchema, applyUpdateModelPatch } from './updateModel'
 import { BusinessModel } from '../types'
 
 export const ALL_TOOL_SCHEMAS: Tool[] = [
+  updateModelToolSchema,       // always first — AI calls this on every turn
   calculatorToolSchema,
   industryDataToolSchema,
   competitorDeepScanToolSchema, // Firecrawl-powered — preferred over web_search
@@ -33,6 +35,15 @@ function parseNumeric(val: unknown): number {
 export async function executeTool(toolName: string, input: Record<string, unknown>, currentModel: BusinessModel): Promise<ToolResult> {
   const inp = input as Record<string, any>
   switch (toolName) {
+    case 'update_business_model': {
+      const patch = applyUpdateModelPatch(inp, currentModel)
+      return {
+        tool_name: toolName,
+        output: { ok: true, fields_updated: Object.keys(patch) },
+        model_patch: patch,
+      }
+    }
+
     case 'calculator': {
       const result = calculateLeak({
         description: String(inp.description),
@@ -51,9 +62,14 @@ export async function executeTool(toolName: string, input: Record<string, unknow
     case 'industry_data': {
       const industry = input.industry as string
       const metric = input.metric as string
+      const observed = typeof input.observed === 'number' ? input.observed : undefined
       if (metric === 'all') {
         const facts = listIndustryFacts(industry)
         return { tool_name: toolName, output: { industry, facts } }
+      }
+      if (typeof observed === 'number') {
+        const delta = computeBenchmarkDelta(industry, metric, observed)
+        if (delta) return { tool_name: toolName, output: { industry, delta } }
       }
       const fact = lookupIndustryFact(industry, metric)
       return { tool_name: toolName, output: fact ?? { error: 'Metric not found', industry, metric } }

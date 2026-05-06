@@ -1,23 +1,24 @@
-import Groq from 'groq-sdk'
-import type { ChatCompletionTool } from 'groq-sdk/resources/chat/completions'
+import OpenAI from 'openai'
+import type { Chat } from 'openai/resources/chat'
 import { logger } from '../logger'
 import { loadBusinessModel, saveBusinessModel, mergeModel } from './businessModel'
 import { buildDiagnosticSystemPrompt, buildSynthesisSystemPrompt } from './prompts'
 import { ALL_TOOL_SCHEMAS, executeTool } from './tools/index'
 import { AgentPhase, AgentTurnResult, BusinessModel, ReportPayload } from './types'
+import { extractBusinessModelPatchFromMessage } from './extractor'
 import { createClient } from '@supabase/supabase-js'
 
-const GROQ_MODEL = 'llama-3.3-70b-versatile'
+const MODEL = 'gpt-4o'
 const MAX_TOOL_ROUNDS = 3
 const RATE_LIMIT_COOLDOWN_MS = 60 * 1000
 const AGENT_TURN_TIMEOUT_MS = 30 * 1000
 const HISTORY_WINDOW = 10 // max conversation turns sent to model (older turns pruned)
+const MIN_DIAGNOSIS_EVIDENCE = 2
+const MIN_DIAGNOSIS_CONFIDENCE = 0.65
+const MIN_EVIDENCE_COMPLETENESS = 60 // 0-100 — report blocked below this threshold
 
-// Track rate-limited keys with expiry
-const rateLimitedKeys = new Map<string, number>()
-
-// Convert Anthropic Tool format to Groq/OpenAI ChatCompletionTool format
-function convertToolsForGroq(tools: typeof ALL_TOOL_SCHEMAS): ChatCompletionTool[] {
+// Convert Anthropic Tool format to OpenAI ChatCompletionTool format
+function convertToolsForOpenAI(tools: typeof ALL_TOOL_SCHEMAS): Chat.ChatCompletionTool[] {
   return tools.map(tool => ({
     type: 'function' as const,
     function: {
@@ -37,51 +38,12 @@ function getServiceClient() {
   )
 }
 
-function getAvailableGroqKeys(): string[] {
-  const keys: string[] = []
-  for (let i = 0; i < 5; i++) {
-    const key = i === 0
-      ? process.env.GROQ_API_KEY
-      : process.env[`GROQ_API_KEY_${i}`]
-    if (key) keys.push(key)
+function getOpenAIClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is not configured')
   }
-  if (keys.length === 0) throw new Error('No GROQ_API_KEY configured')
-  return keys
-}
-
-function getGroqClientWithKey(): { client: Groq; key: string } {
-  const allKeys = getAvailableGroqKeys()
-  const now = Date.now()
-
-  // Filter out rate-limited keys that haven't cooled down yet
-  const availableKeys = allKeys.filter(key => {
-    const limitedUntil = rateLimitedKeys.get(key)
-    if (!limitedUntil || limitedUntil < now) {
-      rateLimitedKeys.delete(key)
-      return true
-    }
-    return false
-  })
-
-  // If all keys are rate limited, throw error with 429 status
-  if (availableKeys.length === 0) {
-    logger.error('All Groq API keys are rate limited', { totalKeys: allKeys.length })
-    const error = new Error('All Groq API keys are rate limited')
-    ;(error as any).status = 429
-    throw error
-  }
-
-  // Pick random available key
-  const randomIndex = Math.floor(Math.random() * availableKeys.length)
-  const key = availableKeys[randomIndex]
-  logger.info('Selected Groq key', { available: availableKeys.length, total: allKeys.length })
-  return { client: new Groq({ apiKey: key }), key }
-}
-
-function markKeyRateLimited(key: string): void {
-  const cooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS
-  rateLimitedKeys.set(key, cooldownUntil)
-  logger.warn('Marked Groq key as rate limited', { cooldownMs: RATE_LIMIT_COOLDOWN_MS })
+  return new OpenAI({ apiKey })
 }
 
 async function getSessionPhase(sessionId: string): Promise<AgentPhase> {
@@ -97,6 +59,63 @@ async function getSessionPhase(sessionId: string): Promise<AgentPhase> {
 async function setSessionPhase(sessionId: string, phase: AgentPhase): Promise<void> {
   const supabase = getServiceClient()
   await supabase.from('sessions').update({ agent_phase: phase }).eq('id', sessionId)
+}
+
+function validateTranscriptConsistency(model: BusinessModel): Array<{ field: string; conflict: string }> {
+  const conflicts: Array<{ field: string; conflict: string }> = []
+
+  // Check weekly_leads consistency
+  const weeklyLeads = model.stage_metrics?.weekly_leads
+  const responseTime = model.stage_metrics?.response_time_minutes
+  if (weeklyLeads && responseTime) {
+    if (weeklyLeads > 100 && responseTime > 480) {
+      conflicts.push({
+        field: 'lead_volume',
+        conflict: `${weeklyLeads} leads/week but ${responseTime}min response time (2+ hours). High volume + slow response = contradiction.`,
+      })
+    }
+  }
+
+  // Check follow-up vs conversion
+  const followUp = model.stage_metrics?.follow_up_attempts
+  const conversion = model.stage_metrics?.stage_conversion_pct
+  if (followUp && conversion) {
+    if (followUp >= 7 && conversion < 2) {
+      conflicts.push({
+        field: 'follow_up_cadence',
+        conflict: `${followUp} follow-up attempts but ${conversion}% conversion. If following up this aggressively, conversion should be higher.`,
+      })
+    }
+  }
+
+  // Check no-show vs repeat rate
+  const noShow = model.stage_metrics?.no_show_rate_pct
+  const repeat = model.stage_metrics?.repeat_rate_pct
+  if (noShow && repeat && noShow > 30 && repeat > 50) {
+    conflicts.push({
+      field: 'customer_reliability',
+      conflict: `${noShow}% no-show rate but ${repeat}% repeat rate. High no-shows contradict high repeat bookings.`,
+    })
+  }
+
+  // Check revenue metrics
+  if (model.revenue.avg_ticket_inr && model.revenue.monthly_inr) {
+    const avgTicket = model.revenue.avg_ticket_inr
+    const monthlyRev = model.revenue.monthly_inr
+    const impliedTransactions = monthlyRev / avgTicket
+    if (impliedTransactions < 10) {
+      // Low transaction count, check if weekly_leads makes sense
+      const weeklyLeads = model.stage_metrics?.weekly_leads
+      if (weeklyLeads && weeklyLeads > 50) {
+        conflicts.push({
+          field: 'lead_conversion',
+          conflict: `${weeklyLeads} weekly leads but implied ₹${monthlyRev} ÷ ₹${avgTicket} = ${impliedTransactions.toFixed(0)} transactions/month. Conversion rate doesn't match.`,
+        })
+      }
+    }
+  }
+
+  return conflicts
 }
 
 async function getConversationHistory(sessionId: string): Promise<MessageParam[]> {
@@ -139,30 +158,30 @@ async function runAgentTurnInternal(
     ...history,
     { role: 'user', content: userMessage },
   ]
+  const extractedPatch = extractBusinessModelPatchFromMessage(userMessage, model)
+  let currentModel = mergeModel(model, extractedPatch)
 
-  // Cap history sent to model — Llama degrades past ~8K tokens of conversation
+  // Cap history sent to model
   const cappedHistory = updatedHistory.length > HISTORY_WINDOW * 2
     ? updatedHistory.slice(-(HISTORY_WINDOW * 2))
     : updatedHistory
 
-  const systemPrompt = buildDiagnosticSystemPrompt(model, phase)
-  // Injected at end of messages — Llama pays attention to start AND end
+  // Injected at end of messages
   const tailReminder = 'REMINDER: ONE question only in your response. Start with a diagnosis or ₹/% figure, never a greeting. 4 sentences max.'
   const toolCallsMade: string[] = []
-  let currentModel = { ...model }
 
-  const { client, key: groqKey } = getGroqClientWithKey()
+  const client = getOpenAIClient()
   let loopHistory = [...cappedHistory]
   let finalReply = ''
   let reportReady = false
   let salesPhaseTriggered = false
-  let groqCallCount = 0
+  let openaiCallCount = 0
 
   try {
     let toolRound = 0
     while (toolRound < MAX_TOOL_ROUNDS) {
       const messages = [
-        { role: 'system' as const, content: systemPrompt },
+        { role: 'system' as const, content: buildDiagnosticSystemPrompt(currentModel, phase) },
         ...loopHistory.map(msg => ({
           role: msg.role as 'user' | 'assistant' | 'system',
           content: msg.content,
@@ -170,21 +189,20 @@ async function runAgentTurnInternal(
         { role: 'system' as const, content: tailReminder },
       ]
 
-      const groqStart = Date.now()
+      const openaiStart = Date.now()
       const response = await client.chat.completions.create({
-        model: GROQ_MODEL,
+        model: MODEL,
         max_tokens: 512,
-        temperature: 0.3,
-        top_p: 0.9,
-        tools: convertToolsForGroq(ALL_TOOL_SCHEMAS),
+        temperature: 0.7,
+        tools: convertToolsForOpenAI(ALL_TOOL_SCHEMAS),
         tool_choice: 'auto',
         messages: messages as any,
       })
-      groqCallCount++
-      const groqTime = Date.now() - groqStart
-      if (!timings.groq) timings.groq = 0
-      timings.groq += groqTime
-      logger.info('Groq call completed', { sessionId, round: toolRound, durationMs: groqTime, groqCallCount })
+      openaiCallCount++
+      const openaiTime = Date.now() - openaiStart
+      if (!timings.openai) timings.openai = 0
+      timings.openai += openaiTime
+      logger.info('OpenAI call completed', { sessionId, round: toolRound, durationMs: openaiTime, openaiCallCount })
 
       const message = response.choices[0]?.message
       const content = message?.content ?? ''
@@ -292,9 +310,8 @@ Make the founder feel the competitive pressure. Be specific, not generic.`
   } catch (err) {
     const error = err as { status?: number; message?: string }
     if (error.status === 429 || error.status === 402) {
-      markKeyRateLimited(groqKey)
-      logger.warn('Groq rate limit/quota hit, marking key as limited', { status: error.status, key: groqKey })
-      throw new Error('Groq API rate limited — trying another key on next request')
+      logger.warn('OpenAI rate limit/quota hit', { status: error.status })
+      throw new Error('OpenAI API rate limited — please try again in a moment')
     }
     logger.error('Groq API error', { error: error.message, status: error.status })
     throw err
@@ -303,6 +320,25 @@ Make the founder feel the competitive pressure. Be specific, not generic.`
   // Phase advancement logic
   let newPhase: AgentPhase = phase
   let reportPayload: ReportPayload | undefined
+  const inferredDiagnoses = inferDiagnoses(currentModel)
+  const hasConfidentDiagnosis = inferredDiagnoses.some(
+    (diagnosis) => diagnosis.confidence >= MIN_DIAGNOSIS_CONFIDENCE
+  )
+  const hasFounderContext = hasMinimumFounderContext(currentModel)
+  const evidenceCompleteness = computeEvidenceCompleteness(currentModel)
+  const evidenceSufficient = evidenceCompleteness >= MIN_EVIDENCE_COMPLETENESS
+
+  if ((reportReady || salesPhaseTriggered) && (!hasConfidentDiagnosis || !hasFounderContext || !evidenceSufficient)) {
+    reportReady = false
+    salesPhaseTriggered = false
+    finalReply = buildLowConfidenceFollowup(inferredDiagnoses, currentModel)
+    logger.info('Suppressed finalize signal due to low confidence or thin context', {
+      sessionId,
+      hasFounderContext,
+      evidenceCompleteness,
+      evidenceSufficient,
+    })
+  }
 
   if (reportReady) {
     newPhase = 'complete'
@@ -310,6 +346,9 @@ Make the founder feel the competitive pressure. Be specific, not generic.`
     // Auto-trigger report when we have enough data (3-minute audit fast path)
     currentModel.completeness_score >= 75 &&
     currentModel.leaks.length >= 2 &&
+    hasConfidentDiagnosis &&
+    hasFounderContext &&
+    evidenceSufficient &&
     phase !== 'complete'
   ) {
     newPhase = 'complete'
@@ -318,6 +357,7 @@ Make the founder feel the competitive pressure. Be specific, not generic.`
       sessionId,
       completeness: currentModel.completeness_score,
       leaks: currentModel.leaks.length,
+      hasFounderContext,
     })
   } else if (salesPhaseTriggered) {
     newPhase = 'sales'
@@ -330,7 +370,7 @@ Make the founder feel the competitive pressure. Be specific, not generic.`
   // Unified synthesis trigger: run when report is ready or synthesis is needed
   if ((reportReady || newPhase === 'complete' || (salesPhaseTriggered && phase !== 'complete')) && !reportPayload) {
     const synthesisStart = Date.now()
-    reportPayload = await runGroqSynthesis(sessionId, currentModel)
+    reportPayload = await runOpenAISynthesis(sessionId, currentModel)
     timings.synthesis = Date.now() - synthesisStart
     newPhase = 'complete'
     reportReady = true
@@ -343,6 +383,8 @@ Make the founder feel the competitive pressure. Be specific, not generic.`
   ]
 
   const saveStart = Date.now()
+  currentModel.diagnoses = inferredDiagnoses
+  currentModel.actions = inferActions(currentModel, inferredDiagnoses)
   await Promise.all([
     saveBusinessModel(sessionId, currentModel),
     appendHistory(sessionId, finalHistory),
@@ -356,7 +398,7 @@ Make the founder feel the competitive pressure. Be specific, not generic.`
     totalMs: totalTime,
     breakdown: timings,
     reportReady,
-    groqCallCount,
+    openaiCallCount,
   })
 
   return {
@@ -369,8 +411,8 @@ Make the founder feel the competitive pressure. Be specific, not generic.`
   }
 }
 
-async function runGroqSynthesis(sessionId: string, model: BusinessModel): Promise<ReportPayload> {
-  const { client, key: groqKey } = getGroqClientWithKey()
+async function runOpenAISynthesis(sessionId: string, model: BusinessModel): Promise<ReportPayload> {
+  const client = getOpenAIClient()
 
   // Populate model from conversation if missing
   if (!model.identity.name || model.completeness_score === 0) {
@@ -390,10 +432,9 @@ async function runGroqSynthesis(sessionId: string, model: BusinessModel): Promis
   let response
   try {
     response = await client.chat.completions.create({
-      model: GROQ_MODEL,
+      model: MODEL,
       max_tokens: 4000,
-      temperature: 0.1,
-      top_p: 0.9,
+      temperature: 0.7,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: 'Generate the complete ReportPayload JSON now.' },
@@ -402,8 +443,7 @@ async function runGroqSynthesis(sessionId: string, model: BusinessModel): Promis
   } catch (err) {
     const error = err as { status?: number; message?: string }
     if (error.status === 429 || error.status === 402) {
-      markKeyRateLimited(groqKey)
-      logger.warn('Synthesis hit rate limit, marked key', { status: error.status })
+      logger.warn('Synthesis hit rate limit', { status: error.status })
     }
     throw err
   }
@@ -524,6 +564,234 @@ function computeReadinessScore(model: BusinessModel): number {
   if (model.workflow.lead_source.includes('WhatsApp')) score += 1
   if ((model.identity.team_size ?? 0) >= 5) score += 1
   return Math.min(10, score)
+}
+
+function inferDiagnoses(model: BusinessModel): BusinessModel['diagnoses'] {
+  const now = new Date().toISOString()
+  const diagnoses: BusinessModel['diagnoses'] = []
+  const leakEvidence = model.leaks.map((leak) => ({
+    fact: `${leak.description}: ₹${leak.annual_leak_inr.toLocaleString('en-IN')}/year`,
+    source: 'tool' as const,
+    timestamp: now,
+    strength: leak.confidence === 'calculated' ? 0.85 : 0.65,
+  }))
+  const workflowEvidence = model.workflow.bottlenecks.map((bottleneck) => ({
+    fact: `Workflow bottleneck: ${bottleneck}`,
+    source: 'conversation' as const,
+    timestamp: now,
+    strength: 0.65,
+  }))
+  const evidencePool = [...leakEvidence, ...workflowEvidence]
+
+  const hypothesisRules: Array<{
+    hypothesis: BusinessModel['diagnoses'][number]['hypothesis']
+    keywords: RegExp
+    unknowns: string[]
+    disprovers: string[]
+  }> = [
+    {
+      hypothesis: 'lead_response',
+      keywords: /(lead|response|inquiry|inbound|callback)/i,
+      unknowns: ['Need measured response-time baseline and lead volume'],
+      disprovers: ['Median first response time under 5 minutes over 30 days'],
+    },
+    {
+      hypothesis: 'no_show',
+      keywords: /(no[- ]?show|reminder|missed appointment|didn.?t attend)/i,
+      unknowns: ['Need booked-vs-attended baseline for 30 days'],
+      disprovers: ['No-show rate consistently under 8%'],
+    },
+    {
+      hypothesis: 'follow_up',
+      keywords: /(follow[- ]?up|cold lead|reactivat|ghosted|no response)/i,
+      unknowns: ['Need follow-up attempts per lead by stage'],
+      disprovers: ['At least 5 follow-up attempts on 80%+ of leads'],
+    },
+    {
+      hypothesis: 'stage_conversion',
+      keywords: /(conversion|drop[- ]?off|proposal|booking to payment|stage)/i,
+      unknowns: ['Need stage-level conversion percentages'],
+      disprovers: ['Stage conversion rates within target benchmark range'],
+    },
+    {
+      hypothesis: 'payment_dropoff',
+      keywords: /(payment|checkout|abandon|failed transaction|upi)/i,
+      unknowns: ['Need payment initiated vs completed ratio'],
+      disprovers: ['Payment completion above 90%'],
+    },
+    {
+      hypothesis: 'fulfillment_delay',
+      keywords: /(delivery|fulfillment|handoff|ops delay|sla breach)/i,
+      unknowns: ['Need fulfillment SLA baseline and breach frequency'],
+      disprovers: ['Fulfillment SLA breached less than 5% of the time'],
+    },
+  ]
+
+  for (const rule of hypothesisRules) {
+    const matchedEvidence = evidencePool.filter((item) => rule.keywords.test(item.fact))
+    if (matchedEvidence.length < MIN_DIAGNOSIS_EVIDENCE) continue
+
+    const calculatedEvidenceCount = matchedEvidence.filter((item) => item.source === 'tool').length
+    const confidence = Math.min(
+      0.9,
+      0.45 + matchedEvidence.length * 0.1 + calculatedEvidenceCount * 0.08
+    )
+
+    diagnoses.push({
+      hypothesis: rule.hypothesis,
+      confidence: Math.round(confidence * 100) / 100,
+      evidence: matchedEvidence.slice(0, 4),
+      unknowns: confidence >= MIN_DIAGNOSIS_CONFIDENCE ? [] : rule.unknowns,
+      disprovers: rule.disprovers,
+    })
+  }
+
+  return diagnoses.sort((a, b) => b.confidence - a.confidence).slice(0, 3)
+}
+
+function inferActions(
+  model: BusinessModel,
+  diagnoses: BusinessModel['diagnoses']
+): BusinessModel['actions'] {
+  const confidentDiagnoses = diagnoses.filter(
+    (diagnosis) => diagnosis.confidence >= MIN_DIAGNOSIS_CONFIDENCE
+  )
+  if (confidentDiagnoses.length === 0) return []
+
+  const totalLeak = model.leaks.reduce((sum, leak) => sum + leak.annual_leak_inr, 0)
+  const monthlyLeak = Math.round(totalLeak / 12)
+  const hasLeadResponseDiagnosis = confidentDiagnoses.some((d) => d.hypothesis === 'lead_response')
+  const hasNoShowDiagnosis = confidentDiagnoses.some((d) => d.hypothesis === 'no_show')
+  const hasFollowUpDiagnosis = confidentDiagnoses.some((d) => d.hypothesis === 'follow_up')
+
+  const actions: BusinessModel['actions'] = []
+  if (hasLeadResponseDiagnosis) {
+    actions.push({
+      action_id: 'sla_nudge_whatsapp',
+      expected_impact_inr: Math.round(monthlyLeak * 0.2),
+      time_to_value_days: 7,
+      risk: 'low',
+    })
+  }
+  if (hasNoShowDiagnosis) {
+    actions.push({
+      action_id: 'no_show_reminder_flow',
+      expected_impact_inr: Math.round(monthlyLeak * 0.15),
+      time_to_value_days: 10,
+      risk: 'low',
+    })
+  }
+  if (hasFollowUpDiagnosis || actions.length === 0) {
+    actions.push({
+      action_id: 'lost_lead_reactivation',
+      expected_impact_inr: Math.round(monthlyLeak * 0.25),
+      time_to_value_days: 14,
+      risk: 'medium',
+    })
+  }
+  return actions
+}
+
+function buildLowConfidenceFollowup(
+  diagnoses: BusinessModel['diagnoses'],
+  model: BusinessModel
+): string {
+  const missingContextQuestion = getMissingContextQuestion(model)
+  if (missingContextQuestion) {
+    return missingContextQuestion
+  }
+
+  const topDiagnosis = diagnoses[0]
+  const unknown =
+    topDiagnosis?.unknowns?.[0] ??
+    'I still need one concrete operational metric to avoid a generic recommendation'
+  return `Confidence is still below 65%, so I will not finalize a diagnosis yet. ${unknown}. What is the weekly frequency and approximate ₹ impact of this issue?`
+}
+
+function computeEvidenceCompleteness(model: BusinessModel): number {
+  let score = 0
+
+  // Business shape — 3 pts
+  if (model.identity.industry) score += 1
+  if (model.revenue.avg_ticket_inr || model.revenue.monthly_inr) score += 1
+  if (model.identity.team_size || model.identity.city) score += 1
+
+  // Funnel math — 3 pts (this is the diagnostic core)
+  if (model.stage_metrics && Object.keys(model.stage_metrics).length >= 1) score += 1
+  if (model.stage_metrics && Object.keys(model.stage_metrics).length >= 2) score += 1
+  if (model.workflow.lead_source.length > 0) score += 1
+
+  // Operating context — 2 pts
+  if (model.ai_readiness.tools.length > 0) score += 1
+  if (model.owner_by_step && Object.keys(model.owner_by_step).length > 0) score += 1
+
+  // Leaks quantified — 2 pts
+  if (model.leaks.length >= 1) score += 1
+  if (model.leaks.length >= 2) score += 1
+
+  // Transcript consistency check — -1 per conflict
+  const conflicts = validateTranscriptConsistency(model)
+  score = Math.max(0, score - conflicts.length)
+
+  return Math.round((score / 10) * 100)
+}
+
+function hasMinimumFounderContext(model: BusinessModel): boolean {
+  const hasBusinessShape = Boolean(
+    model.identity.industry &&
+    (model.revenue.avg_ticket_inr || model.revenue.monthly_inr) &&
+    (model.identity.team_size || model.identity.city)
+  )
+  const hasFunnelMath = Boolean(
+    model.workflow.lead_source.length > 0 &&
+    model.workflow.process_steps.length > 0 &&
+    ((model.stage_metrics && Object.keys(model.stage_metrics).length > 0) || model.leaks.length > 0)
+  )
+  const hasOperatingContext = Boolean(
+    model.workflow.bottlenecks.length > 0 &&
+    model.ai_readiness.tools.length > 0 &&
+    model.owner_by_step &&
+    Object.keys(model.owner_by_step).length > 0
+  )
+  const hasConstraintContext = Boolean(
+    model.ai_readiness.tech_comfort !== 'low' ||
+    model.ai_readiness.budget_signal !== 'low' ||
+    (model.constraints && model.constraints.length > 0)
+  )
+
+  return hasBusinessShape && hasFunnelMath && hasOperatingContext && hasConstraintContext
+}
+
+function getMissingContextQuestion(model: BusinessModel): string | null {
+  if (!model.identity.industry) {
+    return 'Industry context is still thin, so I will not finalize a generic audit. What exactly does the business sell, and to whom?'
+  }
+
+  if (!model.revenue.avg_ticket_inr && !model.revenue.monthly_inr) {
+    return 'Revenue context is still too thin for a founder-grade recommendation. What is your typical deal value or monthly revenue range?'
+  }
+
+  if (!model.workflow.lead_source.length) {
+    return 'Acquisition context is missing, so the diagnosis would still be generic. Which channels bring most of your leads today?'
+  }
+
+  if (!model.stage_metrics || Object.keys(model.stage_metrics).length === 0) {
+    return 'I still need one operating metric before I trust the diagnosis. What is the current response time, no-show rate, repeat rate, or payment completion rate?'
+  }
+
+  if (!model.ai_readiness.tools.length) {
+    return 'The workflow stack is still unclear. What tools does the team already use today: WhatsApp, CRM, Google Sheets, booking software, or something else?'
+  }
+
+  if (!model.owner_by_step || Object.keys(model.owner_by_step).length === 0) {
+    return 'Execution ownership is still unclear. Who owns follow-up or the step where leads are slipping today?'
+  }
+
+  if (!model.constraints || model.constraints.length === 0) {
+    return 'I can see the leak, but not yet the implementation reality. What is the main constraint: budget, bandwidth, staffing, or tech comfort?'
+  }
+
+  return null
 }
 
 export async function runAgentTurn(

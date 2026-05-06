@@ -9,7 +9,12 @@ interface CalculatorInput {
 
 interface CalculatorOutput {
   annual_leak_inr: number
+  estimated_loss_min: number
+  estimated_loss_max: number
   monthly_leak_inr: number
+  confidence: number
+  assumptions: string[]
+  disprovers: string[]
   confidence_note: string
   leak: RevenueLeak
 }
@@ -28,7 +33,18 @@ export function calculateLeak(input: CalculatorInput): CalculatorOutput {
 
   return {
     annual_leak_inr: annual,
+    estimated_loss_min: Math.round(annual * 0.8),
+    estimated_loss_max: Math.round(annual * 1.2),
     monthly_leak_inr: monthly,
+    confidence: 0.78,
+    assumptions: [
+      `Frequency remains near ${input.frequency_per_week}/week`,
+      `Unit loss remains near ₹${input.cost_per_instance_inr.toLocaleString('en-IN')}`,
+    ],
+    disprovers: [
+      'Recent process change reduced frequency materially',
+      'Unit economics changed over last 30 days',
+    ],
     confidence_note: `${input.frequency_per_week}x/week × ₹${input.cost_per_instance_inr}/instance × 52 weeks`,
     leak,
   }

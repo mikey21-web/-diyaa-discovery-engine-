@@ -26,6 +26,7 @@ export default function ReportPage() {
   const [payload, setPayload] = useState<ReportPayload | null>(null)
   const [reportId, setReportId] = useState<string>('')
   const [isDownloading, setIsDownloading] = useState(false)
+  const [actionStatus, setActionStatus] = useState<string>('')
 
   const loadReport = useCallback(
     async (attempt = 0) => {
@@ -124,6 +125,28 @@ export default function ReportPage() {
   const businessName = business_model.identity.name ?? 'Your Business'
   const totalLeak = digital_twin.total_annual_leak_inr
   const whatsappLink = `https://wa.me/${whatsappNumber}`
+  const primaryAction = business_model.actions?.[0]
+
+  const runPrimaryAction = async (mode: 'preview' | 'execute') => {
+    if (!primaryAction) return
+    setActionStatus(mode === 'preview' ? 'Previewing action...' : 'Executing action...')
+    try {
+      const res = await fetch('/api/actions/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: payload.session_id,
+          action_id: primaryAction.action_id,
+          mode,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Action failed')
+      setActionStatus(`${mode === 'preview' ? 'Preview' : 'Execution'} complete: ${data.run?.status}`)
+    } catch {
+      setActionStatus('Action failed. Please try again.')
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-zinc-900 font-sans">
@@ -191,30 +214,68 @@ export default function ReportPage() {
         {business_model.leaks.length > 0 && (
           <section>
             <SectionHeader n="01" label="Revenue Leak Analysis" />
-            <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-200">
-                    <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase">Problem</th>
-                    <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase text-right">Annual Leak</th>
-                    <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase hidden sm:table-cell">Confidence</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {business_model.leaks.map((leak, i) => (
-                    <tr key={i} className="hover:bg-zinc-50/50">
-                      <td className="px-6 py-5 text-zinc-900 font-medium text-sm">{leak.description}</td>
-                      <td className="px-6 py-5 text-[#E11D48] font-black text-right">{formatINR(leak.annual_leak_inr)}</td>
-                      <td className="px-6 py-5 text-zinc-400 text-xs capitalize hidden sm:table-cell">{leak.confidence}</td>
+            <div className="space-y-4">
+              <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-zinc-50 border-b border-zinc-200">
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase">Problem</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase text-right">Annual Leak</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase hidden sm:table-cell">Confidence</th>
                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {business_model.leaks.map((leak, i) => (
+                      <tr key={i} className="hover:bg-zinc-50/50">
+                        <td className="px-6 py-5 text-zinc-900 font-medium text-sm">{leak.description}</td>
+                        <td className="px-6 py-5 text-[#E11D48] font-black text-right">{formatINR(leak.annual_leak_inr)}</td>
+                        <td className="px-6 py-5 text-zinc-400 text-xs capitalize hidden sm:table-cell">{leak.confidence}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-red-50/40">
+                      <td className="px-6 py-5 font-bold text-zinc-900">Total Annual Leak</td>
+                      <td className="px-6 py-5 text-[#E11D48] font-black text-xl text-right">{formatINR(totalLeak)}</td>
+                      <td className="hidden sm:table-cell" />
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {business_model.leaks.some(l => l.source_quote) && (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Evidence Trail</p>
+                  {business_model.leaks.filter(l => l.source_quote).map((leak, i) => (
+                    <div key={i} className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                      <p className="text-xs font-bold text-blue-900 mb-2">{leak.description}</p>
+                      <p className="text-sm text-blue-900 italic">"{leak.source_quote}"</p>
+                      {leak.evidence_summary && <p className="text-xs text-blue-700 mt-2">→ {leak.evidence_summary}</p>}
+                    </div>
                   ))}
-                  <tr className="bg-red-50/40">
-                    <td className="px-6 py-5 font-bold text-zinc-900">Total Annual Leak</td>
-                    <td className="px-6 py-5 text-[#E11D48] font-black text-xl text-right">{formatINR(totalLeak)}</td>
-                    <td className="hidden sm:table-cell" />
-                  </tr>
-                </tbody>
-              </table>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Diagnosis */}
+        {(business_model.diagnoses?.length || 0) > 0 && (
+          <section>
+            <SectionHeader n="02" label="Diagnosis & Evidence" />
+            <div className="bg-white border border-zinc-200 rounded-2xl p-6 space-y-4">
+              {business_model.diagnoses.map((d, i) => (
+                <div key={i} className="border border-zinc-100 rounded-xl p-4">
+                  <p className="text-sm font-bold text-zinc-900">{d.hypothesis} · {Math.round(d.confidence * 100)}% confidence</p>
+                  {d.source_quote && (
+                    <div className="mt-3 pl-4 border-l-2 border-amber-300 bg-amber-50 py-2">
+                      <p className="text-sm italic text-amber-900">"{d.source_quote}"</p>
+                      {d.quote_context && <p className="text-xs text-amber-700 mt-1">Context: {d.quote_context}</p>}
+                    </div>
+                  )}
+                  <ul className="mt-2 text-xs text-zinc-600 list-disc list-inside">
+                    {d.evidence.map((e, j) => <li key={j}>{e.fact}</li>)}
+                  </ul>
+                  {d.unknowns.length > 0 && <p className="text-xs text-amber-700 mt-2">Unknowns: {d.unknowns.join(', ')}</p>}
+                </div>
+              ))}
             </div>
           </section>
         )}
@@ -222,7 +283,7 @@ export default function ReportPage() {
         {/* Digital Twin */}
         {digital_twin.today_nodes.length > 0 && (
           <section>
-            <SectionHeader n="02" label="Workflow Digital Twin" />
+            <SectionHeader n="03" label="Workflow Digital Twin" />
             <DigitalTwin data={digital_twin} />
           </section>
         )}
@@ -230,21 +291,79 @@ export default function ReportPage() {
         {/* Competitor X-Ray */}
         {competitor_xray.competitors.length > 0 && (
           <section>
-            <SectionHeader n="03" label="Competitor X-Ray" />
+            <SectionHeader n="04" label="Competitor X-Ray" />
             <CompetitorXRay data={competitor_xray} />
           </section>
         )}
 
         {/* Live Prototype */}
         <section>
-          <SectionHeader n="04" label="Your AI — Live Demo" />
+          <SectionHeader n="05" label="Your AI — Live Demo" />
           <LivePrototype sessionId={payload.session_id} prototypeId={payload.prototype_id} />
         </section>
+
+        {/* Benchmark Comparison */}
+        {business_model.identity.industry && (
+          <section>
+            <SectionHeader n="05" label="How You Compare" />
+            <div className="space-y-4">
+              {business_model.stage_metrics && Object.keys(business_model.stage_metrics).length > 0 && (
+                <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden">
+                  <div className="bg-zinc-50 px-6 py-4 border-b border-zinc-200">
+                    <p className="text-sm font-bold text-zinc-900">Your Metrics vs Industry Leaders</p>
+                  </div>
+                  <div className="divide-y divide-zinc-100">
+                    {business_model.stage_metrics.response_time_minutes && (
+                      <div className="px-6 py-4 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-zinc-900">Lead Response Time</p>
+                          <p className="text-xs text-zinc-500">How fast you reply to leads</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-zinc-900">{business_model.stage_metrics.response_time_minutes}m</p>
+                          <p className="text-xs text-zinc-400">Top performers: 5-15m</p>
+                        </div>
+                      </div>
+                    )}
+                    {business_model.stage_metrics.weekly_leads && (
+                      <div className="px-6 py-4 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-zinc-900">Weekly Lead Volume</p>
+                          <p className="text-xs text-zinc-500">Inquiries your team handles</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-zinc-900">{business_model.stage_metrics.weekly_leads}</p>
+                          <p className="text-xs text-zinc-400">Industry avg: 20-50/week</p>
+                        </div>
+                      </div>
+                    )}
+                    {business_model.stage_metrics.stage_conversion_pct && (
+                      <div className="px-6 py-4 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-zinc-900">Lead-to-Sale Conversion</p>
+                          <p className="text-xs text-zinc-500">% of leads who become customers</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-zinc-900">{business_model.stage_metrics.stage_conversion_pct}%</p>
+                          <p className="text-xs text-zinc-400">Top performers: 8-15%</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-xs font-bold text-blue-900 uppercase">Key Insight</p>
+                <p className="text-sm text-blue-900 mt-2">The biggest leverage point for {business_model.identity.industry} teams like yours is cutting response time by 50-70%. This alone lifts conversion 2-3x.</p>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Roadmap */}
         {roadmap.length > 0 && (
           <section>
-            <SectionHeader n="05" label="90-Day AI Roadmap" />
+            <SectionHeader n="06" label="90-Day AI Roadmap" />
             <div className="grid md:grid-cols-3 gap-6">
               {roadmap.map((stage) => (
                 <div key={stage.month} className="bg-white border border-zinc-200 rounded-2xl p-6 hover:border-zinc-400 transition-all">
@@ -269,7 +388,7 @@ export default function ReportPage() {
 
         {/* AI Readiness */}
         <section>
-          <SectionHeader n="06" label="AI Readiness Score" />
+          <SectionHeader n="07" label="AI Readiness Score" />
           <div className="bg-white border border-zinc-200 rounded-2xl p-8 flex flex-col sm:flex-row gap-6 items-center">
             <div className="w-28 h-28 rounded-full border-8 border-zinc-100 flex items-center justify-center flex-shrink-0">
               <span className="text-4xl font-black text-zinc-900">{ai_readiness_score}<span className="text-lg text-zinc-400">/10</span></span>
@@ -311,6 +430,23 @@ export default function ReportPage() {
             </div>
           </div>
         </section>
+
+        {primaryAction && (
+          <section>
+            <SectionHeader n="08" label="Action Engine" />
+            <div className="bg-white border border-zinc-200 rounded-2xl p-6">
+              <p className="text-sm text-zinc-700 mb-4">
+                Recommended first action: <span className="font-semibold">{primaryAction.action_id}</span> · expected impact {formatINR(primaryAction.expected_impact_inr)}
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <button onClick={() => runPrimaryAction('preview')} className="px-4 py-2 rounded-xl border border-zinc-300 text-sm font-semibold">Preview Action</button>
+                <button onClick={() => runPrimaryAction('execute')} className="px-4 py-2 rounded-xl bg-zinc-900 text-white text-sm font-semibold">Approve & Execute</button>
+                <a href={`/control-tower/${payload.session_id}`} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold">Open Control Tower</a>
+              </div>
+              {actionStatus && <p className="text-xs text-zinc-500 mt-3">{actionStatus}</p>}
+            </div>
+          </section>
+        )}
 
         <footer className="pt-8 border-t border-zinc-200 text-center">
           <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Generated by diyaa.ai · Report {reportId.slice(0, 8)}</p>

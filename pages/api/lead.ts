@@ -9,15 +9,6 @@ import { logger } from '@/lib/logger'
 import { sendLeadEmail } from '@/lib/email'
 import type { LeadRequest, LeadResponse, ApiError, ExtractedData } from '@/lib/types'
 
-function normalizeWhatsapp(input: string): string {
-  return input.replace(/[^\d+]/g, '')
-}
-
-function isValidWhatsapp(input: string): boolean {
-  const normalized = normalizeWhatsapp(input)
-  return /^\+?\d{10,15}$/.test(normalized)
-}
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<LeadResponse | ApiError>
@@ -29,7 +20,7 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' })
   }
 
-  const { session_id, name, email, whatsapp } = req.body as LeadRequest
+  const { session_id, name, email } = req.body as LeadRequest
 
   if (!session_id || !name || !email) {
     return res.status(400).json({ error: 'Name and email are required.', code: 'INVALID_INPUT' })
@@ -39,14 +30,9 @@ export default async function handler(
     return res.status(400).json({ error: 'Enter a valid email address.', code: 'INVALID_INPUT' })
   }
 
-  if (whatsapp && !isValidWhatsapp(whatsapp)) {
-    return res.status(400).json({ error: 'Enter a valid WhatsApp number.', code: 'INVALID_INPUT' })
-  }
-
   try {
     const supabase = getServiceClient()
 
-    // 1. Fetch Session + Report in PARALLEL
     const [sessionRes, reportRes] = await Promise.all([
       supabase.from('sessions').select('extracted_data').eq('id', session_id).single(),
       supabase.from('reports').select('id, share_url').eq('session_id', session_id).single(),
@@ -55,34 +41,26 @@ export default async function handler(
     const extractedData = sessionRes.data?.extracted_data as ExtractedData | null;
     const reportUrl = reportRes.data?.share_url || null;
 
-    // 2. Atomic Lead Insert (DB unique constraint prevents duplicates even under race conditions)
-    const normalizedWhatsapp = whatsapp ? normalizeWhatsapp(whatsapp) : undefined
-
     const { error: insertError } = await supabase.from('leads').insert({
       session_id,
       name,
       email,
-      whatsapp: normalizedWhatsapp,
       industry: extractedData?.industry || undefined,
       city: extractedData?.city || undefined,
       report_url: reportUrl,
       status: 'new',
     })
 
-    // If lead already exists (UNIQUE constraint violation), that's OK — it was a retry
     if (insertError && !insertError.message?.includes('duplicate')) {
       throw insertError
     }
 
-    // 3. Mark session complete
     await supabase.from('sessions').update({ lead_captured: true }).eq('id', session_id)
 
-    // 4. Send email notification directly
     try {
       await sendLeadEmail({
         name,
         email,
-        whatsapp: normalizedWhatsapp,
         industry: extractedData?.industry || undefined,
         report_url: reportUrl,
         ai_readiness_score: extractedData?.ai_readiness_score ?? undefined,

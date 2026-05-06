@@ -7,6 +7,13 @@ interface IndustryFact {
   source: string
 }
 
+export interface BenchmarkDelta {
+  metric: string
+  benchmark: string
+  observed: number
+  delta_percent: number
+}
+
 const INDUSTRY_DATA: Record<string, IndustryFact[]> = {
   real_estate: [
     { metric: 'lead_response_time_top', value: '5 minutes', context: 'Top-performing agents respond within 5 minutes', source: 'Kraya AI 2026' },
@@ -75,6 +82,20 @@ export function listIndustryFacts(industry: string): IndustryFact[] {
   return [...specific, ...INDUSTRY_DATA.general]
 }
 
+export function computeBenchmarkDelta(industry: string, metric: string, observed: number): BenchmarkDelta | null {
+  const fact = lookupIndustryFact(industry, metric)
+  if (!fact) return null
+  const benchmarkRaw = parseFloat(fact.value.replace(/[^\d.]/g, ''))
+  if (!Number.isFinite(benchmarkRaw) || benchmarkRaw === 0) return null
+  const deltaPercent = Math.round(((observed - benchmarkRaw) / benchmarkRaw) * 100)
+  return {
+    metric,
+    benchmark: fact.value,
+    observed,
+    delta_percent: deltaPercent,
+  }
+}
+
 function normalizeIndustry(raw: string): string {
   const map: Record<string, string> = {
     'real estate': 'real_estate',
@@ -114,6 +135,10 @@ export const industryDataToolSchema: Tool = {
       metric: {
         type: 'string',
         description: 'Specific metric to look up, or "all" to get all facts for this industry',
+      },
+      observed: {
+        type: 'number',
+        description: 'Optional observed value from the business to compute benchmark delta',
       },
     },
     required: ['industry', 'metric'],
