@@ -4,6 +4,7 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head>
+        <meta name="deploysafe-verify" content="deploysafe-verify=86240db574e699f77cf6bb5cbfd07f5ac6c09be56c87836fd475b65a6dcb5621" />
         <meta name="theme-color" content="#0F0F0F" />
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="diyaa.ai" />
